@@ -9,6 +9,7 @@ import { splitColdHot, HOT_WINDOW_DAYS } from "../utils/coldHotRange.js";
 import {
   buildSubIdBundleFromBucketsRaw,
   distribuirPinNoPorDia,
+  distribuirPinCliquesNoPorDia,
 } from "./monthlyBucketPanel";
 import { applySubIdFinanceiroRow } from "../../../domain/metrics/financeiroMetrics.js";
 import {
@@ -188,6 +189,7 @@ export async function getSubIdHybridBundle(
 
   subIdMap = applyPinToSubIdMap(subIdMap, pinBySubId);
   distribuirPinNoPorDia(porDia, gastoPinTotal, startStr, endStr);
+  distribuirPinCliquesNoPorDia(porDia, pinBySubId, startStr, endStr);
 
   const rows = rowsFromSubIdMap(subIdMap);
   return finalizarSubIdPeriodoBundle(rows, porDia, startDate, endDate, {

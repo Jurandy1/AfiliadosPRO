@@ -61,6 +61,7 @@ import {
   listMonthKeysInRange,
   loadMonthlyBucketData,
   PRODUTOS_SCAN_MAX_DIAS as BUCKET_PRODUTOS_MAX_DIAS,
+  distribuirPinCliquesNoPorDia,
 } from "./monthlyBucketPanel.js";
 import { splitColdHot } from "../utils/coldHotRange.js";
 import {
@@ -1392,6 +1393,9 @@ function agregarPorDiaDeSubidSnapshot(subidSnap, startStr, endStr) {
         total_vendas: 0,
         pedidos: 0,
         gasto: 0,
+        cliques_meta: 0,
+        cliques_shopee: 0,
+        cliques_pinterest: 0,
         bySubId: {},
       };
     }
@@ -1410,6 +1414,7 @@ function agregarPorDiaDeSubidSnapshot(subidSnap, startStr, endStr) {
     if (!porDia[data].bySubId[subid]) {
       porDia[data].bySubId[subid] = {
         comissoes: 0, comissoes_estimadas: 0, faturamento: 0, total_vendas: 0, gasto: 0,
+        cliques_meta: 0, cliques_shopee: 0, cliques_pinterest: 0,
       };
     }
     porDia[data].bySubId[subid].comissoes += comissaoReal;
@@ -1428,27 +1433,74 @@ function aplicarGastoMetaAoPorDia(porDia, metaSnap, startStr, endStr) {
     if (!data || data < startStr || data > endStr) return;
     const subid = normalizeSubId(m.subid || m.nomeAnuncio || "");
     const gasto = Number(m.valorUsado || 0);
-    if (!gasto) return;
+    const cliquesMeta = Number(m.cliquesTotal || 0);
+    if (!gasto && !cliquesMeta) return;
 
     if (!porDia[data]) {
       porDia[data] = {
         data,
         comissoes: 0,
+        comissoes_estimadas: 0,
         faturamento: 0,
         total_vendas: 0,
         pedidos: 0,
         gasto: 0,
+        cliques_meta: 0,
+        cliques_shopee: 0,
+        cliques_pinterest: 0,
         bySubId: {},
       };
     }
     porDia[data].gasto += gasto;
+    porDia[data].cliques_meta += cliquesMeta;
     if (subid) {
       if (!porDia[data].bySubId[subid]) {
         porDia[data].bySubId[subid] = {
           comissoes: 0, comissoes_estimadas: 0, faturamento: 0, total_vendas: 0, gasto: 0,
+          cliques_meta: 0, cliques_shopee: 0, cliques_pinterest: 0,
         };
       }
       porDia[data].bySubId[subid].gasto += gasto;
+      porDia[data].bySubId[subid].cliques_meta += cliquesMeta;
+    }
+  });
+  return porDia;
+}
+
+function aplicarCliquesShopeeAoPorDia(porDia, cliqueDailySnap, startStr, endStr) {
+  if (!cliqueDailySnap?.forEach) return porDia;
+  cliqueDailySnap.forEach((docSnap) => {
+    const x = docSnap.data() || {};
+    const data = x.data;
+    if (!data || data < startStr || data > endStr) return;
+    const subid = normalizeSubId(x.subid || x.sub_id_norm || "");
+    const cliques = Number(x.cliques || 0);
+    if (!cliques) return;
+
+    if (!porDia[data]) {
+      porDia[data] = {
+        data,
+        comissoes: 0,
+        comissoes_estimadas: 0,
+        faturamento: 0,
+        total_vendas: 0,
+        pedidos: 0,
+        gasto: 0,
+        cliques_meta: 0,
+        cliques_shopee: 0,
+        cliques_pinterest: 0,
+        bySubId: {},
+      };
+    }
+    porDia[data].cliques_shopee += cliques;
+    if (subid) {
+      if (!porDia[data].bySubId[subid]) {
+        porDia[data].bySubId[subid] = {
+          comissoes: 0, comissoes_estimadas: 0, faturamento: 0, total_vendas: 0, gasto: 0,
+          cliques_meta: 0, cliques_shopee: 0, cliques_pinterest: 0,
+        };
+      }
+      porDia[data].bySubId[subid].cliques_shopee += cliques;
     }
   });
   return porDia;
@@ -1466,6 +1518,9 @@ function finalizarLinhasDiarias(porDia, settings = {}) {
         lucro: fin.lucro,
         roi: fin.roi,
         roas: fin.roas,
+        cliques_meta: Number(rest.cliques_meta || 0),
+        cliques_shopee: Number(rest.cliques_shopee || 0),
+        cliques_pinterest: Number(rest.cliques_pinterest || 0),
         _bySubId: bySubId,
       };
     })
@@ -1566,6 +1621,20 @@ export async function montarBundleGranular(startStr, endStr, {
   let porDia = agregarPorDiaDeSubidSnapshot(subidSnap, startStr, endStr);
   if (metaDailySnap) {
     porDia = aplicarGastoMetaAoPorDia(porDia, metaDailySnap, startStr, endStr);
+  }
+  if (cliqueDailySnap) {
+    porDia = aplicarCliquesShopeeAoPorDia(porDia, cliqueDailySnap, startStr, endStr);
+  }
+  let pinBySubRaw = {};
+  if (enrichMeta && !skipPin) {
+    const importIds = await getLatestImportIds().catch(() => ({}));
+    const pinterest = importIds.pinterest
+      ? await getPinterest(importIds.pinterest).catch(() => [])
+      : [];
+    pinBySubRaw = buildPinBySubForPeriod(startStr, endStr, pinterest);
+  }
+  if (Object.keys(pinBySubRaw).length > 0) {
+    distribuirPinCliquesNoPorDia(porDia, pinBySubRaw, startStr, endStr);
   }
 
   return { subIdMap: mergedMap, porDia };
@@ -1971,6 +2040,9 @@ export function filterSubIdDailyBreakdown(rows, subIdsFilter) {
     let faturamento = 0;
     let total_vendas = 0;
     let gasto = 0;
+    let cliques_meta = 0;
+    let cliques_shopee = 0;
+    let cliques_pinterest = 0;
     for (const [sid, v] of Object.entries(row._bySubId || {})) {
       if (!filterSet.has(sid)) continue;
       comissoes += v.comissoes || 0;
@@ -1978,6 +2050,9 @@ export function filterSubIdDailyBreakdown(rows, subIdsFilter) {
       faturamento += v.faturamento || 0;
       total_vendas += v.total_vendas || 0;
       gasto += v.gasto || 0;
+      cliques_meta += v.cliques_meta || 0;
+      cliques_shopee += v.cliques_shopee || 0;
+      cliques_pinterest += v.cliques_pinterest || 0;
     }
     const fin = calcSubIdFinanceiroMetrics(subIdComissaoParaLucro({ comissoes, comissoes_estimadas }), gasto);
     return {
@@ -1991,8 +2066,11 @@ export function filterSubIdDailyBreakdown(rows, subIdsFilter) {
       lucro: fin.lucro,
       roi: fin.roi,
       roas: fin.roas,
+      cliques_meta,
+      cliques_shopee,
+      cliques_pinterest,
     };
-  }).filter((r) => r.comissoes > 0 || r.gasto > 0 || r.total_vendas > 0);
+  }).filter((r) => r.comissoes > 0 || r.gasto > 0 || r.total_vendas > 0 || r.cliques_meta > 0 || r.cliques_shopee > 0 || r.cliques_pinterest > 0);
 }
 
 function formatPerdasPeriodDate(d) {

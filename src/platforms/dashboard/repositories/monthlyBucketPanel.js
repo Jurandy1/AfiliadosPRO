@@ -276,6 +276,9 @@ export function distribuirPinNoPorDia(porDia, pinTotal, startStr, endStr) {
         total_vendas: 0,
         pedidos: 0,
         gasto: 0,
+        cliques_meta: 0,
+        cliques_shopee: 0,
+        cliques_pinterest: 0,
         bySubId: {},
       };
     }
@@ -283,6 +286,50 @@ export function distribuirPinNoPorDia(porDia, pinTotal, startStr, endStr) {
       ? (porDia[dateStr].gasto / totalGasto) * pin
       : pin / dates.length;
     porDia[dateStr].gasto = roundMoney(porDia[dateStr].gasto + share);
+  }
+}
+
+export function distribuirPinCliquesNoPorDia(porDia, pinBySubId, startStr, endStr) {
+  const dates = iterDatesInRange(startStr, endStr);
+  if (!dates.length) return;
+
+  for (const [rawSid, pinRow] of Object.entries(pinBySubId || {})) {
+    const sid = normalizeSubId(rawSid) || rawSid;
+    const pinClicks = Number(pinRow?.cliques_anuncio || 0);
+    if (pinClicks <= 0) continue;
+
+    const totalMetaClicksForSid = dates.reduce((sum, d) => sum + (porDia[d]?.bySubId?.[sid]?.cliques_meta || 0), 0);
+
+    for (const dateStr of dates) {
+      if (!porDia[dateStr]) {
+        porDia[dateStr] = {
+          data: dateStr,
+          comissoes: 0,
+          comissoes_estimadas: 0,
+          faturamento: 0,
+          total_vendas: 0,
+          pedidos: 0,
+          gasto: 0,
+          cliques_meta: 0,
+          cliques_shopee: 0,
+          cliques_pinterest: 0,
+          bySubId: {},
+        };
+      }
+      if (!porDia[dateStr].bySubId[sid]) {
+        porDia[dateStr].bySubId[sid] = {
+          comissoes: 0, comissoes_estimadas: 0, faturamento: 0, total_vendas: 0, gasto: 0,
+          cliques_meta: 0, cliques_shopee: 0, cliques_pinterest: 0,
+        };
+      }
+
+      const share = totalMetaClicksForSid > 0
+        ? (porDia[dateStr].bySubId[sid].cliques_meta / totalMetaClicksForSid) * pinClicks
+        : pinClicks / dates.length;
+
+      porDia[dateStr].bySubId[sid].cliques_pinterest = (porDia[dateStr].bySubId[sid].cliques_pinterest || 0) + share;
+      porDia[dateStr].cliques_pinterest = (porDia[dateStr].cliques_pinterest || 0) + share;
+    }
   }
 }
 
@@ -326,6 +373,9 @@ export function buildSubIdBundleFromBucketsRaw(subidByMonth, painelByMonth, star
           total_vendas: 0,
           pedidos: 0,
           gasto: 0,
+          cliques_meta: 0,
+          cliques_shopee: 0,
+          cliques_pinterest: 0,
           bySubId: {},
         };
       }
@@ -335,9 +385,13 @@ export function buildSubIdBundleFromBucketsRaw(subidByMonth, painelByMonth, star
       porDia[dateStr].total_vendas += Number(cell.qtd_itens || 0);
       porDia[dateStr].pedidos += Number(cell.pedidos || 0);
       porDia[dateStr].gasto += gasto;
+      porDia[dateStr].cliques_meta = (porDia[dateStr].cliques_meta || 0) + Number(cell.cliques_meta || 0);
+      porDia[dateStr].cliques_shopee = (porDia[dateStr].cliques_shopee || 0) + Number(cell.cliques_shopee || 0);
+
       if (!porDia[dateStr].bySubId[subid]) {
         porDia[dateStr].bySubId[subid] = {
           comissoes: 0, comissoes_estimadas: 0, faturamento: 0, total_vendas: 0, gasto: 0,
+          cliques_meta: 0, cliques_shopee: 0, cliques_pinterest: 0,
         };
       }
       porDia[dateStr].bySubId[subid].comissoes += comReal;
@@ -345,6 +399,8 @@ export function buildSubIdBundleFromBucketsRaw(subidByMonth, painelByMonth, star
       porDia[dateStr].bySubId[subid].faturamento += Number(cell.faturamento || 0);
       porDia[dateStr].bySubId[subid].total_vendas += Number(cell.qtd_itens || 0);
       porDia[dateStr].bySubId[subid].gasto += gasto;
+      porDia[dateStr].bySubId[subid].cliques_meta = (porDia[dateStr].bySubId[subid].cliques_meta || 0) + Number(cell.cliques_meta || 0);
+      porDia[dateStr].bySubId[subid].cliques_shopee = (porDia[dateStr].bySubId[subid].cliques_shopee || 0) + Number(cell.cliques_shopee || 0);
     }
   }
 

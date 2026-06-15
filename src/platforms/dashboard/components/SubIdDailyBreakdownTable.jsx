@@ -18,7 +18,7 @@ function TrendIcon({ delta }) {
   return <ArrowDown size={14} className="text-red-500 inline" aria-label="Piorou" />;
 }
 
-function DailyRow({ row, prevLucro, roiMinimo }) {
+function DailyRow({ row, prevLucro, roiMinimo, hasMetaClicks, hasShopeeClicks, hasPinClicks }) {
   const lucroColor = (row.lucro || 0) >= 0 ? "text-emerald-700" : "text-red-600";
   const roiColor = row.roi >= roiMinimo ? "#16A34A" : row.roi >= 0 ? "#D97706" : "#DC2626";
   const delta = prevLucro != null ? (row.lucro || 0) - prevLucro : null;
@@ -36,6 +36,9 @@ function DailyRow({ row, prevLucro, roiMinimo }) {
         {row.gasto > 0 ? ((row.roi || 0) * 100).toFixed(2) + "%" : "—"}
       </td>
       <td className="px-2 py-2 text-center">{fmtVendas(row.total_vendas)}</td>
+      {hasMetaClicks && <td className="px-2 py-2 text-center text-slate-600">{fmtNum(row.cliques_meta)}</td>}
+      {hasShopeeClicks && <td className="px-2 py-2 text-center text-slate-600">{fmtNum(row.cliques_shopee)}</td>}
+      {hasPinClicks && <td className="px-2 py-2 text-center text-slate-600">{fmtNum(row.cliques_pinterest)}</td>}
       <td className="px-2 py-2 text-center">
         <TrendIcon delta={delta} />
       </td>
@@ -43,7 +46,7 @@ function DailyRow({ row, prevLucro, roiMinimo }) {
   );
 }
 
-function DailyCard({ row, prevLucro, roiMinimo }) {
+function DailyCard({ row, prevLucro, roiMinimo, hasMetaClicks, hasShopeeClicks, hasPinClicks }) {
   const lucroColor = (row.lucro || 0) >= 0 ? "text-emerald-700" : "text-red-600";
   const roiColor = row.roi >= roiMinimo ? "#16A34A" : row.roi >= 0 ? "#D97706" : "#DC2626";
   const delta = prevLucro != null ? (row.lucro || 0) - prevLucro : null;
@@ -81,6 +84,24 @@ function DailyCard({ row, prevLucro, roiMinimo }) {
           <span className="text-gray-500">Vendas</span>
           <div>{fmtVendas(row.total_vendas)}</div>
         </div>
+        {hasMetaClicks && (
+          <div>
+            <span className="text-gray-500">Cliques Meta</span>
+            <div className="font-semibold text-slate-700">{fmtNum(row.cliques_meta)}</div>
+          </div>
+        )}
+        {hasShopeeClicks && (
+          <div>
+            <span className="text-gray-500">Cliques Shopee</span>
+            <div className="font-semibold text-slate-700">{fmtNum(row.cliques_shopee)}</div>
+          </div>
+        )}
+        {hasPinClicks && (
+          <div>
+            <span className="text-gray-500">Cliques Pinterest</span>
+            <div className="font-semibold text-slate-700">{fmtNum(row.cliques_pinterest)}</div>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -117,6 +138,10 @@ export default function SubIdDailyBreakdownTable({
     );
   }
 
+  const hasMetaClicks = rows.some((r) => (r.cliques_meta || 0) > 0);
+  const hasShopeeClicks = rows.some((r) => (r.cliques_shopee || 0) > 0);
+  const hasPinClicks = rows.some((r) => (r.cliques_pinterest || 0) > 0);
+
   if (isMobile) {
     return (
       <div className="p-3 space-y-2">
@@ -126,6 +151,9 @@ export default function SubIdDailyBreakdownTable({
             row={row}
             prevLucro={row._prevLucro}
             roiMinimo={roiMinimo}
+            hasMetaClicks={hasMetaClicks}
+            hasShopeeClicks={hasShopeeClicks}
+            hasPinClicks={hasPinClicks}
           />
         ))}
         <div className="bg-slate-900 text-white rounded-lg p-3 text-xs font-bold">
@@ -135,6 +163,9 @@ export default function SubIdDailyBreakdownTable({
             <div>Gasto: <span className="text-rose-400">{fmt(totals.gasto)}</span></div>
             <div>Lucro: <span className={totals.lucro >= 0 ? "text-emerald-400" : "text-rose-400"}>{fmt(totals.lucro)}</span></div>
             <div>Vendas: {fmtVendas(totals.total_vendas)}</div>
+            {hasMetaClicks && <div>Cliques Meta: <span className="text-slate-300 font-semibold">{fmtNum(totals.cliques_meta)}</span></div>}
+            {hasShopeeClicks && <div>Cliques Shopee: <span className="text-slate-300 font-semibold">{fmtNum(totals.cliques_shopee)}</span></div>}
+            {hasPinClicks && <div>Cliques Pinterest: <span className="text-slate-300 font-semibold">{fmtNum(totals.cliques_pinterest)}</span></div>}
           </div>
         </div>
       </div>
@@ -153,6 +184,9 @@ export default function SubIdDailyBreakdownTable({
             <SortTh label="Lucro" field="lucro" sortField={sortField} onSort={onSort} />
             <SortTh label="ROI" field="roi" sortField={sortField} onSort={onSort} />
             <SortTh label="Vendas" field="total_vendas" sortField={sortField} onSort={onSort} />
+            {hasMetaClicks && <SortTh label="Cliques Meta" field="cliques_meta" sortField={sortField} onSort={onSort} />}
+            {hasShopeeClicks && <SortTh label="Cliques Shopee" field="cliques_shopee" sortField={sortField} onSort={onSort} />}
+            {hasPinClicks && <SortTh label="Cliques Pin" field="cliques_pinterest" sortField={sortField} onSort={onSort} />}
             <th className="px-2 py-2.5 text-center" title="Comparado ao dia anterior (lucro)">Tend.</th>
           </tr>
         </thead>
@@ -163,6 +197,9 @@ export default function SubIdDailyBreakdownTable({
               row={row}
               prevLucro={row._prevLucro}
               roiMinimo={roiMinimo}
+              hasMetaClicks={hasMetaClicks}
+              hasShopeeClicks={hasShopeeClicks}
+              hasPinClicks={hasPinClicks}
             />
           ))}
         </tbody>
@@ -179,6 +216,9 @@ export default function SubIdDailyBreakdownTable({
               {totals.gasto > 0 ? (totals.roiTotal * 100).toFixed(2) + "%" : "—"}
             </td>
             <td className="px-3 py-3 text-center">{fmtVendas(totals.total_vendas)}</td>
+            {hasMetaClicks && <td className="px-3 py-3 text-center text-slate-300">{fmtNum(totals.cliques_meta)}</td>}
+            {hasShopeeClicks && <td className="px-3 py-3 text-center text-slate-300">{fmtNum(totals.cliques_shopee)}</td>}
+            {hasPinClicks && <td className="px-3 py-3 text-center text-slate-300">{fmtNum(totals.cliques_pinterest)}</td>}
             <td className="px-3 py-3" />
           </tr>
         </tfoot>

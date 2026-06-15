@@ -678,8 +678,11 @@ export default function DashboardPage() {
       acc.gasto += r.gasto || 0;
       acc.faturamento += r.faturamento || 0;
       acc.total_vendas += r.total_vendas || 0;
+      acc.cliques_meta += r.cliques_meta || 0;
+      acc.cliques_shopee += r.cliques_shopee || 0;
+      acc.cliques_pinterest += r.cliques_pinterest || 0;
       return acc;
-    }, { comissoes: 0, gasto: 0, faturamento: 0, total_vendas: 0 });
+    }, { comissoes: 0, gasto: 0, faturamento: 0, total_vendas: 0, cliques_meta: 0, cliques_shopee: 0, cliques_pinterest: 0 });
     const fin = calcSubIdFinanceiroMetrics(totals.comissoes, totals.gasto);
     return {
       ...totals,
