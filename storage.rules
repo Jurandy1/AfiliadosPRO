@@ -1,0 +1,25 @@
+// Cole essas regras no Firebase Console → Storage → Regras
+// Permite upload apenas de CSVs/XLSX na pasta csv-imports/
+
+rules_version = '2';
+
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    // Permite upload de CSVs/XLSX na pasta de imports
+    match /csv-imports/{tipo}/{filename} {
+      allow read: if true;
+      allow write: if request.resource.size < 10 * 1024 * 1024  // máx 10MB
+                   && (request.resource.contentType.matches('text/csv')
+                       || request.resource.contentType.matches('text/plain')
+                       || request.resource.contentType.matches('application/vnd.openxmlformats.*')
+                       || request.resource.contentType.matches('application/vnd.ms-excel')
+                       || request.resource.contentType.matches('application/octet-stream'));
+    }
+
+    // Bloquear todo o resto
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}

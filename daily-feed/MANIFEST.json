@@ -1,0 +1,115 @@
+{
+  "name": "daily-feed",
+  "description": "Alimentacao diaria do dashboard: Shopee, Meta, produtos, KPIs",
+  "frontend": {
+    "entry": "src/daily-feed/index.js",
+    "alias": "@/daily-feed",
+    "modules": {
+      "calc/financeiroMetrics.js": {
+        "role": "Formulas lucro, ROI, ROAS, PromosApp, reconciliacao gasto SubID",
+        "canonical": true,
+        "exports": [
+          "calcFinanceiroMetrics",
+          "finalizarKpisComissaoDashboard",
+          "comissaoRealPeriodo",
+          "isPromosAppKpiFonteAtiva",
+          "reconcileSubIdsGastoComKpis"
+        ]
+      },
+      "calc/productMetrics.js": {
+        "role": "ROI/ROAS/status por produto",
+        "canonical": true
+      },
+      "calc/subIdIntegrity.js": {
+        "role": "Filtragem, merge e finalizacao linhas SubID",
+        "canonical": true
+      },
+      "calc/monthlyBucketPanel.js": {
+        "role": "Agregacao via painel_resumo (cache mensal)",
+        "canonical": false,
+        "implementation": "src/platforms/dashboard/repositories/monthlyBucketPanel.js"
+      },
+      "feed/metricsRepository.js": {
+        "role": "Orquestrador principal: le Firestore, monta painel, dispara sync",
+        "canonical": false,
+        "implementation": "src/platforms/dashboard/repositories/metricsRepository.js"
+      },
+      "feed/subIdHybridBundle.js": {
+        "role": "SubID hibrido frio/quente",
+        "canonical": false,
+        "implementation": "src/platforms/dashboard/repositories/subIdHybridBundle.js"
+      },
+      "feed/periodDataCache.js": {
+        "role": "Cache de sessao por periodo",
+        "canonical": false,
+        "implementation": "src/platforms/dashboard/services/periodDataCache.js"
+      },
+      "enrichment/adsPeriodSpend.js": {
+        "role": "Gasto Meta/Pinterest por SubID",
+        "canonical": false,
+        "implementation": "src/platforms/dashboard/enrichment/adsPeriodSpend.js"
+      },
+      "enrichment/produtoPeriodo.js": {
+        "role": "Produtos do periodo com investimento",
+        "canonical": false,
+        "implementation": "src/platforms/dashboard/enrichment/produtoPeriodo.js"
+      },
+      "sync/syncPolicy.js": {
+        "role": "Politica auto-sync Shopee",
+        "canonical": true
+      },
+      "utils/coldHotRange.js": {
+        "role": "Split periodo frio (bucket) vs quente (granular)",
+        "canonical": true
+      }
+    }
+  },
+  "backend": {
+    "entry": "functions/index.js",
+    "env": "functions/.env.projetoafiliado-9ff07",
+    "collections_written": [
+      "shopee_daily",
+      "subid_daily",
+      "produto_daily",
+      "meta_ads_daily",
+      "painel_resumo",
+      "subid_mensal",
+      "log_perdas",
+      "clique_daily",
+      "sync_state"
+    ],
+    "key_functions": [
+      "runShopeeSync",
+      "agruparPorData",
+      "buildShopeePanelAppDayMap",
+      "runMetaDailySync",
+      "rebuildMonthlyBuckets"
+    ],
+    "scheduled": [
+      "shopeeIncrementalSync",
+      "shopeeRecentDaysSync",
+      "shopeeDailyReconcile",
+      "metaDailySync"
+    ]
+  },
+  "ops_scripts": [
+    "deploy-functions.ps1",
+    "resync-shopee-range.ps1",
+    "scripts/backfill-monthly-buckets.cjs",
+    "scripts/analyze-lucro-roi-dia.cjs",
+    "scripts/audit-promosapp-split.cjs"
+  ],
+  "env_vars": {
+    "backend": {
+      "SHOPEE_AGG_MODE": "promosapp",
+      "META_ACCESS_TOKEN": "token Meta Graph API",
+      "META_AD_ACCOUNT_IDS": "contas de anuncio"
+    },
+    "frontend": {
+      "VITE_SHOPEE_PROMOSAPP_KPI": "1",
+      "VITE_SHOPEE_PROMOSAPP_COMISSAO": "0",
+      "VITE_BACKFILL_URL": "URL shopeeBackfillRange",
+      "VITE_META_DAILY_URL": "URL metaDailySync"
+    }
+  }
+}

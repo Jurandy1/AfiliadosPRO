@@ -1,0 +1,48 @@
+{
+  "indexes": [
+    {
+      "collectionGroup": "produto_daily",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "data", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "subid_daily",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "data", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "meta_ads_daily",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "data", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "garimpo_produtos",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "data_garimpo", "order": "ASCENDING" },
+        { "fieldPath": "score_oportunidade", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "garimpo_produtos",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "data_garimpo", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "garimpo_recompra",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "data_garimpo", "order": "ASCENDING" }
+      ]
+    }
+  ],
+  "fieldOverrides": []
+}

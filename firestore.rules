@@ -1,0 +1,243 @@
+// Cole essas regras no Firebase Console → Firestore → Regras
+// São regras de PRODUÇÃO (não de teste)
+
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ── Produtos ────────────────────────────────────────────────
+    match /produtos/{produtoId} {
+      allow read: if true;
+      allow create: if request.resource.data.keys().hasAny(['nome', 'plataforma'])
+                    && request.resource.data.nome is string
+                    && request.resource.data.nome.size() > 0;
+      allow update: if request.resource.data.diff(resource.data).affectedKeys()
+                      .hasOnly(['nome', 'plataforma', 'categoria', 'loja', 'preco',
+                                'comissao_pct', 'comissao_total', 'link_afiliado',
+                                'comissao_concluida', 'comissao_pendente', 'comissao_cancelada',
+                                'vendas', 'vendas_diretas', 'vendas_indiretas',
+                                'cliques', 'impressoes', 'estoque', 'nota',
+                                'metaAdIds', 'pinterestAdIds',
+                                'investimento', 'gmv', 'conv_rate', 'fonte', 'sub_ids',
+                                'pedidos_pendentes', 'pedidos_completos',
+                                'pedidos_concluidos', 'pedidos_cancelados', 'canais',
+                                'updatedAt', 'importadoEm']);
+      allow delete: if true;
+    }
+
+    // ── Backups ─────────────────────────────────────────────────
+    match /backups/{backupId} {
+      allow read: if true;
+      allow create: if request.resource.data.keys().hasAny(['nome_variacao']);
+      allow update: if true;
+      allow delete: if true;
+    }
+
+    // ── Produtos Mortos ─────────────────────────────────────────
+    match /mortos/{mortoId} {
+      allow read: if true;
+      allow create: if request.resource.data.keys().hasAny(['nome']);
+      allow update, delete: if true;
+    }
+
+    // ── Cliques Shopee (agregados por Sub_id) ─────────────────
+    match /cliques_shopee/{cliqueId} {
+      allow read: if true;
+      allow create: if request.resource.data.keys().hasAny(['sub_id']);
+      allow update, delete: if true;
+    }
+
+    match /clique_daily/{docId} {
+      allow read: if true;
+      allow create: if request.resource.data.keys().hasAny(['data', 'subid']);
+      allow update, delete: if true;
+    }
+
+    // ── Vendas por SubID (agregado para dashboard) ────────────
+    match /subid_vendas/{subIdVendaId} {
+      allow read: if true;
+      allow create: if request.resource.data.keys().hasAny(['subid', 'comissoes', 'faturamento']);
+      allow update, delete: if true;
+    }
+
+    // ── Conversões Processadas (dedup do sync incremental) ─────
+    // Backend usa Admin SDK que ignora rules, mas explicitamos por segurança
+    match /conversoes_processadas/{conversionId} {
+      allow read: if true;
+      allow write: if false;  // só backend (Admin SDK) escreve
+    }
+
+    // ── Meta Ads ────────────────────────────────────────────────
+    match /meta_ads/{adId} {
+      allow read: if true;
+      allow create: if request.resource.data.keys().hasAny(['nomeAnuncio']);
+      allow update, delete: if true;
+    }
+
+    match /meta_ads_daily/{docId} {
+      allow read: if true;
+      allow write: if false;
+    }
+
+    match /meta_demographics/{docId} {
+      allow read: if true;
+      allow write: if false;
+    }
+
+    // ── Pinterest Ads ───────────────────────────────────────────
+    match /pinterest_ads/{pinId} {
+      allow read: if true;
+      allow create: if request.resource.data.keys().hasAny(['adName']);
+      allow update, delete: if true;
+    }
+
+    // ── Métricas ────────────────────────────────────────────────
+    match /metricas/{metricaId} {
+      allow read: if true;
+      allow create: if request.resource.data.keys().hasAny(['produtoId']);
+      allow update, delete: if true;
+    }
+
+    // ── Importações (log) ───────────────────────────────────────
+    match /importacoes/{importId} {
+      allow read: if true;
+      allow create: if request.resource.data.keys().hasAny(['tipo', 'status'])
+                    && request.resource.data.tipo is string;
+      allow update: if false;  // logs são imutáveis
+      allow delete: if true;   // pode limpar histórico
+    }
+
+    // ── Alertas ─────────────────────────────────────────────────
+    match /alertas/{alertaId} {
+      allow read: if true;
+      allow create: if request.resource.data.keys().hasAny(['titulo', 'tipo']);
+      allow update: if request.resource.data.diff(resource.data).affectedKeys()
+                      .hasOnly(['lido']);  // só pode marcar como lido
+      allow delete: if true;
+    }
+
+    // ── Sumários (dashboard pré-calculado pelo backend) ─────────
+    match /sumarios/{sumarioId} {
+      allow read: if true;
+      allow write: if false;  // só backend (Admin SDK) escreve
+    }
+
+    // ── Shopee Daily (agregado diário pra filtros de período) ──
+    match /shopee_daily/{dailyId} {
+      allow read: if true;
+      allow write: if false;  // só backend (Admin SDK) escreve
+    }
+
+    match /painel_resumo/{monthId} {
+      allow read: if true;
+      allow write: if false;
+    }
+
+    match /subid_mensal/{monthId} {
+      allow read: if true;
+      allow write: if false;
+    }
+
+    match /produto_mensal/{monthId} {
+      allow read: if true;
+      allow write: if false;
+    }
+
+    match /subid_daily/{docId} {
+      allow read: if true;
+      allow write: if false;  // só backend (Admin SDK) escreve
+    }
+
+    match /produto_daily/{docId} {
+      allow read: if true;
+      allow write: if false;  // só backend (Admin SDK) escreve
+    }
+
+    match /log_perdas/{docId} {
+      allow read: if true;
+      allow write: if false;  // só backend (Admin SDK) escreve
+    }
+
+    match /shopee_validated_daily/{docId} {
+      allow read: if true;
+      allow write: if false;
+    }
+
+    match /garimpo_produtos/{docId} {
+      allow read: if true;
+      allow write: if false;
+    }
+
+    match /garimpo_recompra/{docId} {
+      allow read: if true;
+      allow write: if false;
+    }
+
+    match /garimpo_alertas/{docId} {
+      allow read: if true;
+      allow update: if request.resource.data.diff(resource.data).affectedKeys()
+                      .hasOnly(['lido', 'arquivado']);
+      allow create, delete: if false;
+    }
+
+    // ── Sync State (cursor do incremental) ──────────────────────
+    match /sync_state/importacoes_latest {
+      allow read: if true;
+      allow create, update: if true;
+      allow delete: if false;
+    }
+
+    match /sync_state/{stateId} {
+      allow read: if true;
+      allow write: if false;  // só backend (Admin SDK) escreve
+    }
+
+    match /sync_manifest/{manifestId} {
+      allow read: if false;
+      allow write: if false;
+    }
+
+    match /backup_produtos/{produtoId} {
+      allow read: if true;
+      allow create: if request.resource.data.keys().hasAny(['itemId', 'shopId'])
+                    && request.resource.data.itemId is string;
+      allow update: if true;
+      allow delete: if true;
+    }
+
+    match /backup_grupos/{grupoId} {
+      allow read: if true;
+      allow create: if request.resource.data.keys().hasAny(['nome', 'principalItemId'])
+                    && request.resource.data.nome is string;
+      allow update: if true;
+      allow delete: if true;
+    }
+
+    match /powersuite_links/{linkId} {
+      allow read: if true;
+      allow create: if request.resource.data.keys().hasAll(['shortLink', 'productName'])
+                    && request.resource.data.shortLink is string
+                    && request.resource.data.productName is string;
+      allow update: if false;
+      allow delete: if true;
+    }
+
+    match /config/{docId} {
+      allow read: if true;
+      allow write: if false;
+    }
+
+    // ── Diagnóstico de uso Firestore (contadores agregados pelo app) ──
+    match /firestore_usage/{dayId} {
+      allow read: if true;
+      allow create, update: if true;
+      allow delete: if false;
+    }
+
+    // ── Bloquear tudo que não foi explicitamente permitido ──────
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
