@@ -1,4 +1,3 @@
-import { ArrowDown, ArrowUp, Minus } from "lucide-react";
 import SortTh from "../../../components/tables/SortTh";
 import { fmt, fmtNum } from "../../../utils/formatters";
 import { formatDateDisplayPT } from "../../../utils/dates";
@@ -8,14 +7,18 @@ function fmtVendas(v) {
   return fmtNum(Math.round(v || 0));
 }
 
-function TrendIcon({ delta }) {
-  if (delta == null || Math.abs(delta) < 0.01) {
-    return <Minus size={14} className="text-gray-400 inline" aria-label="Estável" />;
+function TrendPct({ delta, prevLucro }) {
+  if (delta == null || prevLucro == null || prevLucro === 0) {
+    return <span className="text-gray-400">—</span>;
   }
-  if (delta > 0) {
-    return <ArrowUp size={14} className="text-emerald-600 inline" aria-label="Melhorou" />;
+  const pct = (delta / Math.abs(prevLucro)) * 100;
+  if (Math.abs(pct) < 0.01) {
+    return <span className="text-gray-400">0.00%</span>;
   }
-  return <ArrowDown size={14} className="text-red-500 inline" aria-label="Piorou" />;
+  if (pct > 0) {
+    return <span className="text-emerald-600 font-semibold">+{pct.toFixed(2)}%</span>;
+  }
+  return <span className="text-red-500 font-semibold">{pct.toFixed(2)}%</span>;
 }
 
 function DailyRow({ row, prevLucro, roiMinimo, hasMetaClicks, hasShopeeClicks, hasPinClicks }) {
@@ -39,8 +42,8 @@ function DailyRow({ row, prevLucro, roiMinimo, hasMetaClicks, hasShopeeClicks, h
       {hasMetaClicks && <td className="px-2 py-2 text-center text-slate-600">{fmtNum(row.cliques_meta)}</td>}
       {hasShopeeClicks && <td className="px-2 py-2 text-center text-slate-600">{fmtNum(row.cliques_shopee)}</td>}
       {hasPinClicks && <td className="px-2 py-2 text-center text-slate-600">{fmtNum(row.cliques_pinterest)}</td>}
-      <td className="px-2 py-2 text-center">
-        <TrendIcon delta={delta} />
+      <td className="px-2 py-2 text-center font-semibold">
+        <TrendPct delta={delta} prevLucro={prevLucro} />
       </td>
     </tr>
   );
@@ -55,7 +58,7 @@ function DailyCard({ row, prevLucro, roiMinimo, hasMetaClicks, hasShopeeClicks, 
     <div className="border border-gray-100 rounded-lg p-3 bg-white">
       <div className="flex items-center justify-between mb-2">
         <span className="font-semibold text-gray-900">{formatDateDisplayPT(row.data)}</span>
-        <TrendIcon delta={delta} />
+        <TrendPct delta={delta} prevLucro={prevLucro} />
       </div>
       <div className="grid grid-cols-2 gap-2 text-xs">
         <div>
