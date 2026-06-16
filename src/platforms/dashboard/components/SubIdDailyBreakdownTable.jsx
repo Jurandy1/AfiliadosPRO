@@ -7,24 +7,24 @@ function fmtVendas(v) {
   return fmtNum(Math.round(v || 0));
 }
 
-function TrendPct({ delta, prevLucro }) {
-  if (delta == null || prevLucro == null || prevLucro === 0) {
+function BatimentoPct({ cliquesAds, cliquesShopee }) {
+  if (!cliquesAds) {
     return <span className="text-gray-400">—</span>;
   }
-  const pct = (delta / Math.abs(prevLucro)) * 100;
-  if (Math.abs(pct) < 0.01) {
-    return <span className="text-gray-400">0.00%</span>;
-  }
-  if (pct > 0) {
-    return <span className="text-emerald-600 font-semibold">+{pct.toFixed(2)}%</span>;
-  }
-  return <span className="text-red-500 font-semibold">{pct.toFixed(2)}%</span>;
+  const pct = ((cliquesShopee || 0) / cliquesAds) * 100;
+  
+  let colorClass = "text-emerald-600 font-semibold";
+  if (pct < 70) colorClass = "text-red-500 font-semibold";
+  else if (pct < 90) colorClass = "text-amber-500 font-semibold";
+
+  return <span className={colorClass}>{pct.toFixed(2)}%</span>;
 }
 
-function DailyRow({ row, prevLucro, roiMinimo, hasMetaClicks, hasShopeeClicks, hasPinClicks }) {
+function DailyRow({ row, roiMinimo, hasMetaClicks, hasShopeeClicks, hasPinClicks }) {
   const lucroColor = (row.lucro || 0) >= 0 ? "text-emerald-700" : "text-red-600";
   const roiColor = row.roi >= roiMinimo ? "#16A34A" : row.roi >= 0 ? "#D97706" : "#DC2626";
-  const delta = prevLucro != null ? (row.lucro || 0) - prevLucro : null;
+
+  const cliquesAds = (row.cliques_meta || 0) + (row.cliques_pinterest || 0);
 
   return (
     <tr className="hover:bg-gray-50/50">
@@ -43,22 +43,22 @@ function DailyRow({ row, prevLucro, roiMinimo, hasMetaClicks, hasShopeeClicks, h
       {hasShopeeClicks && <td className="px-2 py-2 text-center text-slate-600">{fmtNum(row.cliques_shopee)}</td>}
       {hasPinClicks && <td className="px-2 py-2 text-center text-slate-600">{fmtNum(row.cliques_pinterest)}</td>}
       <td className="px-2 py-2 text-center font-semibold">
-        <TrendPct delta={delta} prevLucro={prevLucro} />
+        <BatimentoPct cliquesAds={cliquesAds} cliquesShopee={row.cliques_shopee} />
       </td>
     </tr>
   );
 }
 
-function DailyCard({ row, prevLucro, roiMinimo, hasMetaClicks, hasShopeeClicks, hasPinClicks }) {
+function DailyCard({ row, roiMinimo, hasMetaClicks, hasShopeeClicks, hasPinClicks }) {
   const lucroColor = (row.lucro || 0) >= 0 ? "text-emerald-700" : "text-red-600";
   const roiColor = row.roi >= roiMinimo ? "#16A34A" : row.roi >= 0 ? "#D97706" : "#DC2626";
-  const delta = prevLucro != null ? (row.lucro || 0) - prevLucro : null;
+  const cliquesAds = (row.cliques_meta || 0) + (row.cliques_pinterest || 0);
 
   return (
     <div className="border border-gray-100 rounded-lg p-3 bg-white">
       <div className="flex items-center justify-between mb-2">
         <span className="font-semibold text-gray-900">{formatDateDisplayPT(row.data)}</span>
-        <TrendPct delta={delta} prevLucro={prevLucro} />
+        <BatimentoPct cliquesAds={cliquesAds} cliquesShopee={row.cliques_shopee} />
       </div>
       <div className="grid grid-cols-2 gap-2 text-xs">
         <div>
@@ -144,6 +144,8 @@ export default function SubIdDailyBreakdownTable({
   const hasMetaClicks = rows.some((r) => (r.cliques_meta || 0) > 0);
   const hasShopeeClicks = rows.some((r) => (r.cliques_shopee || 0) > 0);
   const hasPinClicks = rows.some((r) => (r.cliques_pinterest || 0) > 0);
+  
+  const totalAdsClicks = (totals.cliques_meta || 0) + (totals.cliques_pinterest || 0);
 
   if (isMobile) {
     return (
@@ -152,7 +154,6 @@ export default function SubIdDailyBreakdownTable({
           <DailyCard
             key={row.data}
             row={row}
-            prevLucro={row._prevLucro}
             roiMinimo={roiMinimo}
             hasMetaClicks={hasMetaClicks}
             hasShopeeClicks={hasShopeeClicks}
@@ -190,7 +191,13 @@ export default function SubIdDailyBreakdownTable({
             {hasMetaClicks && <SortTh label="Cliques Meta" field="cliques_meta" sortField={sortField} onSort={onSort} />}
             {hasShopeeClicks && <SortTh label="Cliques Shopee" field="cliques_shopee" sortField={sortField} onSort={onSort} />}
             {hasPinClicks && <SortTh label="Cliques Pin" field="cliques_pinterest" sortField={sortField} onSort={onSort} />}
-            <th className="px-2 py-2.5 text-center" title="Comparado ao dia anterior (lucro)">Tend.</th>
+            <th
+              className="px-2 py-2.5 text-center leading-tight"
+              title="Batimento = Cliques Shopee ÷ Cliques Ads. Acima de 100% indica mais cliques na Shopee do que nos anúncios."
+            >
+              <div>% Bat.</div>
+              <div className="text-[9px] font-normal normal-case text-slate-400 tracking-normal">Shopee ÷ Ads</div>
+            </th>
           </tr>
         </thead>
         <tbody className="divide-y divide-gray-50">
@@ -198,7 +205,6 @@ export default function SubIdDailyBreakdownTable({
             <DailyRow
               key={row.data}
               row={row}
-              prevLucro={row._prevLucro}
               roiMinimo={roiMinimo}
               hasMetaClicks={hasMetaClicks}
               hasShopeeClicks={hasShopeeClicks}
@@ -222,7 +228,9 @@ export default function SubIdDailyBreakdownTable({
             {hasMetaClicks && <td className="px-3 py-3 text-center text-slate-300">{fmtNum(totals.cliques_meta)}</td>}
             {hasShopeeClicks && <td className="px-3 py-3 text-center text-slate-300">{fmtNum(totals.cliques_shopee)}</td>}
             {hasPinClicks && <td className="px-3 py-3 text-center text-slate-300">{fmtNum(totals.cliques_pinterest)}</td>}
-            <td className="px-3 py-3" />
+            <td className="px-3 py-3 text-center">
+              {totalAdsClicks > 0 ? ((totals.cliques_shopee / totalAdsClicks) * 100).toFixed(2) + "%" : "—"}
+            </td>
           </tr>
         </tfoot>
       </table>
