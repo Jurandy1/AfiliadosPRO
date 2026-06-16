@@ -4952,12 +4952,15 @@ exports.shopeeDailyReconcile = onSchedule(
   },
   async () => {
     const now = Math.floor(Date.now() / 1000);
-    const start = now - 15 * 86400;
+    // PATCH H': 15 dias → 5 dias. Dias 6-15 raramente mudam após o atraso
+    // típico de atribuição da Shopee (24-72h). monthAutoSync cobre o resto.
+    // Economia: ~8k reads/dia em produto_daily prefetch.
+    const start = now - 5 * 86400;
     try {
       await runShopeeSync({
         startTs: start,
         endTs: now,
-        label: "reconcile_15d",
+        label: "reconcile_5d",
         updateCursor: false, // reconcile não mexe no cursor do incremental
         forceReplace: true,
         updateDaily: true,
@@ -4966,6 +4969,8 @@ exports.shopeeDailyReconcile = onSchedule(
       // recalcularSumario desativado: modo período usa shopee_daily; economiza ~41k reads/dia.
       // Manual: recalcularSumarioNow (HTTP) se precisar de sumarios/dashboard.
       await touchShopeeSyncHealth({
+        // PATCH H': mantém nome _15d do campo pra não quebrar UI que lê
+        // sync_state/shopee_health. Agora cobre 5 dias.
         lastReconcile15dAt: FieldValue.serverTimestamp(),
         aggregationMode: shopeeAggModeHealthLabel(),
         lastReconcile15dError: null,
@@ -4986,7 +4991,10 @@ exports.shopeeDailyReconcile = onSchedule(
 // ═══════════════════════════════════════════════════════════════════════════
 exports.shopeeRecentDaysSync = onSchedule(
   {
-    schedule: "0 */4 * * *",
+    // PATCH K: 6×/dia → 4×/dia (00h, 06h, 12h, 18h BRT).
+    // Mantém cobertura suficiente pra refletir vendas atrasadas no painel,
+    // mas economiza 33% das execuções diárias.
+    schedule: "0 */6 * * *",
     timeZone: "America/Sao_Paulo",
     secrets: ["SHOPEE_APP_ID", "SHOPEE_SECRET"],
     timeoutSeconds: 540,
@@ -5032,7 +5040,9 @@ exports.shopeeRecentDaysSync = onSchedule(
 // ═══════════════════════════════════════════════════════════════════════════
 exports.shopeeMonthAutoSync = onSchedule(
   {
-    schedule: "30 1,7,13,19 * * *",
+    // PATCH K: 4×/dia → 2×/dia (01:30, 13:30 BRT). Chunks do mês corrente
+    // não precisam rodar tantas vezes; reconcile diário + recent_3d cobrem.
+    schedule: "30 1,13 * * *",
     timeZone: "America/Sao_Paulo",
     secrets: ["SHOPEE_APP_ID", "SHOPEE_SECRET"],
     timeoutSeconds: 540,
@@ -6902,7 +6912,9 @@ exports.metaBackfillDaily = onRequest(
 /** Gasto diário Meta (meta_ads_daily) — a cada 4h, últimos 7 dias até ontem (BRT). */
 exports.metaDailyRecentSync = onSchedule(
   {
-    schedule: "0 */4 * * *",
+    // PATCH K: 6×/dia → 4×/dia. Gasto diário Meta muda devagar dentro do dia
+    // (a Meta consolida fechamento em batches), 6h entre refreshes basta.
+    schedule: "0 */6 * * *",
     timeZone: "America/Sao_Paulo",
     secrets: ["META_ACCESS_TOKEN", "META_AD_ACCOUNT_IDS"],
     timeoutSeconds: 300,

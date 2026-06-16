@@ -16,6 +16,12 @@ import {
 } from "firebase/firestore";
 import { fetchMetaAdsDailySnapshot, invalidateMetaAdsDailyCache } from "../cache/metaAdsDailyCache";
 import { fetchDataVersions, invalidateDataVersionsCache } from "../cache/dataVersions.js";
+import {
+  fetchShopeeDailyForRange,
+  fetchSubIdDailyForRange,
+  fetchCliqueDailyForRange,
+  invalidateDailyRangeCache,
+} from "../cache/dailyRangeCache.js";
 import { db } from "../../../services/firebase/client";
 import {
   applySubIdFinanceiroRow,
@@ -739,13 +745,16 @@ export async function getDatasDesatualizadas(startDate, endDate) {
 
 async function agregarKPIsDeSubIdDaily(startDate, endDate) {
   try {
-    const q = query(
-      collection(db, "subid_daily"),
-      where("data", ">=", startDate),
-      where("data", "<=", endDate),
-    );
-    const snapshot = await getDocs(q);
-    if (snapshot.empty) return null;
+    // PATCH N: usa cache compartilhado
+    const rows = await fetchSubIdDailyForRange(startDate, endDate);
+    if (!rows.length) return null;
+    const snapshot = {
+      empty: false,
+      forEach: (cb) => rows.forEach((r) => cb({ id: r.id, data: () => {
+        const { id, ...rest } = r;
+        return rest;
+      }})),
+    };
 
     const tot = {
       comissao_total: 0,
@@ -1231,29 +1240,25 @@ export function clearDashboardQueryCaches() {
   perdasKpiCache.clear();
   alvoAlinhamentoCache.clear();
   clearMetaAdsCache();
-  invalidateDataVersionsCache();
+  // PATCH M: NÃO invalidar dataVersions aqui — TTL de 30s já basta.
   invalidateProdutoMensalCache();
+  // PATCH N: invalida cache compartilhado de shopee_daily, subid_daily, clique_daily
+  invalidateDailyRangeCache();
 }
 
+// PATCH N: usa cache LRU compartilhado para evitar leituras duplicadas
+// quando múltiplos caminhos do dashboard (KPIs, perdas, alvo, split) leem
+// o mesmo período em paralelo.
 export async function fetchShopeeDailyDocsForRange(startDate, endDate) {
-  const dailyRef = collection(db, "shopee_daily");
-  let docs = [];
-  if (startDate === endDate) {
-    const snapDoc = await getDoc(doc(db, "shopee_daily", startDate));
-    const docValido = snapDoc.exists() && !isDailyMetricsVazio(snapDoc.data());
-    if (docValido) {
-      docs = [snapDoc];
-    }
-  } else {
-    const q = query(
-      dailyRef,
-      where(documentId(), ">=", startDate),
-      where(documentId(), "<=", endDate),
-    );
-    const snap = await getDocs(q);
-    docs = snap.docs;
-  }
-  return docs;
+  const cached = await fetchShopeeDailyForRange(startDate, endDate, isDailyMetricsVazio);
+  // Adapta pra interface `.data()` que callers existentes esperam.
+  return cached.map((row) => ({
+    id: row.id,
+    data: () => {
+      const { id, ...rest } = row;
+      return rest;
+    },
+  }));
 }
 
 /** Totais Shopee do período (1 doc/dia) — fonte de verdade do Dashboard. */
@@ -1591,11 +1596,17 @@ export async function montarBundleGranular(startStr, endStr, {
   settings = {},
   skipPin = false,
 } = {}) {
-  const subidSnap = await getDocs(query(
-    collection(db, "subid_daily"),
-    where("data", ">=", startStr),
-    where("data", "<=", endStr),
-  )).catch(() => ({ empty: true, forEach: () => {} }));
+  // PATCH N: usa cache compartilhado
+  const subidRows = await fetchSubIdDailyForRange(startStr, endStr).catch(() => []);
+  const subidSnap = subidRows.length
+    ? {
+        empty: false,
+        forEach: (cb) => subidRows.forEach((r) => cb({
+          id: r.id,
+          data: () => { const { id, ...rest } = r; return rest; },
+        })),
+      }
+    : { empty: true, forEach: () => {} };
 
   const subIdMap = {};
   subidSnap.forEach((docSnap) => {
@@ -1651,11 +1662,17 @@ export async function montarBundleGranular(startStr, endStr, {
   }
 
   if (enrichMeta && includeCliques) {
-    cliqueDailySnap = await getDocs(query(
-      collection(db, "clique_daily"),
-      where("data", ">=", startStr),
-      where("data", "<=", endStr),
-    )).catch(() => ({ empty: true, forEach: () => {} }));
+    // PATCH N: usa cache compartilhado
+    const cliqueRows = await fetchCliqueDailyForRange(startStr, endStr).catch(() => []);
+    cliqueDailySnap = cliqueRows.length
+      ? {
+          empty: false,
+          forEach: (cb) => cliqueRows.forEach((r) => cb({
+            id: r.id,
+            data: () => { const { id, ...rest } = r; return rest; },
+          })),
+        }
+      : { empty: true, forEach: () => {} };
   }
 
   if (enrichMeta) {
@@ -1804,11 +1821,17 @@ async function enrichSubIdsComMetaNoPeriodo(subIds, startStr, endStr, settings =
       : fetchMetaAdsDailySnapshot(startStr, endStr),
     preloaded.cliqueDailySnap != null
       ? Promise.resolve(preloaded.cliqueDailySnap)
-      : getDocs(query(
-        collection(db, "clique_daily"),
-        where("data", ">=", startStr),
-        where("data", "<=", endStr),
-      )).catch(() => ({ empty: true, forEach: () => {} })),
+      // PATCH N: usa cache compartilhado
+      : fetchCliqueDailyForRange(startStr, endStr).then((rows) => rows.length
+          ? {
+              empty: false,
+              forEach: (cb) => rows.forEach((r) => cb({
+                id: r.id,
+                data: () => { const { id, ...rest } = r; return rest; },
+              })),
+            }
+          : { empty: true, forEach: () => {} }
+        ).catch(() => ({ empty: true, forEach: () => {} })),
   ]);
 
   const metaBySubId = {};

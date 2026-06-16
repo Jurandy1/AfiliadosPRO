@@ -2,22 +2,13 @@
  * metaAdsDailyCache.js
  *
  * Cache de meta_ads_daily com duas camadas:
- *   L1 — Memória (Map): dura enquanto a página não for recarregada.
- *   L2 — IndexedDB via dailyGranularCache: persiste entre recarregamentos,
- *        validado contra o manifesto sync_state/daily_versions.
+ *   L1 — LRU em memória (4 slots): suporta múltiplos períodos paralelos.
+ *   L2 — IndexedDB via dailyGranularCache: persiste entre recarregamentos.
  *
- * Ativação do IDB (L2):
- *   - Requer VITE_SMART_CACHE_META=1 no .env.
- *   - Se a variável estiver ausente ou for "0", apenas L1 (comportamento original).
- *
- * Garantia de dados frescos:
- *   - O backend chama bumpDailyVersionsManifest(dates, "meta") ao fim de cada
- *     sincronização com a API do Meta (metaBackfillDaily).
- *   - Isso atualiza sync_state/daily_versions com um novo timestamp por dia.
- *   - Na próxima leitura após o TTL de 30s do manifesto em memória, o frontend
- *     detecta a divergência de versão e re-busca os dias afetados do Firestore.
- *   - invalidateMetaAdsDailyCache() força o descarte do L1 e do manifesto em
- *     memória, garantindo dados frescos imediatos no próximo acesso.
+ * PATCH M:
+ *   - L1 vira Map LRU (4 períodos diferentes podem coexistir).
+ *   - In-flight dedup: 2 chamadas paralelas com mesmo range → 1 fetch só.
+ *   - Warn em DEV quando range > 7 dias for chamado (rastreio do "635 docs bug").
  */
 import { collection, query, where, getDocs } from "firebase/firestore";
 import { db } from "../../../services/firebase/client";
@@ -27,18 +18,19 @@ import {
 } from "./dailyGranularCache";
 
 const SMART_CACHE_ATIVO = String(import.meta.env.VITE_SMART_CACHE_META ?? "0") === "1";
-
 const EMPTY_SNAP = { empty: true, forEach: () => {}, docs: [] };
 
-// L1: cache em memória por chave de período
-let _l1Cache = null;
-let _l1CacheKey = null;
+const L1_MAX_SLOTS = 4;
+const L1_TTL_MS = 60_000;  // 60s — protege contra repico no mesmo render cycle
+
+// L1: Map LRU. Key = `${startDate}|${endDate}`, value = { snap, ts }.
+const _l1 = new Map();
+
+// In-flight dedup: 2 chamadas simultâneas com mesma key viram 1 fetch.
+const _inFlight = new Map();
+
 let _invalidateTimer = null;
 
-/**
- * Converte um array plano de objetos num "snapshot-like" compatível
- * com o código existente que usa .forEach((doc) => doc.data()).
- */
 function arrayToSnapLike(dataArray) {
   if (!dataArray || dataArray.length === 0) return EMPTY_SNAP;
   const docs = dataArray.map((d) => ({ data: () => d }));
@@ -49,20 +41,37 @@ function arrayToSnapLike(dataArray) {
   };
 }
 
-/**
- * Invalida o cache L1 em memória e, se o smart cache estiver ativo,
- * também invalida o cache do manifesto em memória, forçando nova leitura
- * do Firestore na próxima chamada.
- */
+function lruTouch(key, snap) {
+  // Remove e re-insere pra ir pro topo (Map mantém ordem de inserção).
+  if (_l1.has(key)) _l1.delete(key);
+  _l1.set(key, { snap, ts: Date.now() });
+  // Evict do mais antigo se passou do limite.
+  while (_l1.size > L1_MAX_SLOTS) {
+    const oldestKey = _l1.keys().next().value;
+    _l1.delete(oldestKey);
+  }
+}
+
+function lruGet(key) {
+  const entry = _l1.get(key);
+  if (!entry) return null;
+  if (Date.now() - entry.ts > L1_TTL_MS) {
+    _l1.delete(key);
+    return null;
+  }
+  // Touch: move pro topo
+  _l1.delete(key);
+  _l1.set(key, entry);
+  return entry.snap;
+}
+
 export function invalidateMetaAdsDailyCache(delayMs = 0) {
   if (_invalidateTimer) clearTimeout(_invalidateTimer);
 
   const doInvalidate = () => {
-    _l1Cache = null;
-    _l1CacheKey = null;
+    _l1.clear();
+    _inFlight.clear();
     if (SMART_CACHE_ATIVO) {
-      // Força o manifesto a ser relido do Firestore na próxima requisição.
-      // Isso garante que se um sync aconteceu, as versões novas sejam detectadas.
       invalidateDailyVersionsManifestCache();
     }
   };
@@ -75,42 +84,66 @@ export function invalidateMetaAdsDailyCache(delayMs = 0) {
 }
 
 /**
- * Busca meta_ads_daily para o período.
- *
- * Com VITE_SMART_CACHE_META=1:
- *   - Lê manifesto (1 leitura leve, cacheada 30s)
- *   - Dias já no IDB com versão correta → zero leituras Firestore
- *   - Dias stale ou ausentes → range query apenas no intervalo necessário
- *
- * Sem a flag: comportamento original (getDocs direto + L1 memória).
+ * Calcula dias entre duas datas YYYY-MM-DD inclusivo.
+ * Só pra warn em DEV — não afeta runtime.
  */
+function diasInclusivos(start, end) {
+  if (!start || !end) return 0;
+  const a = Date.parse(`${start}T12:00:00-03:00`);
+  const b = Date.parse(`${end}T12:00:00-03:00`);
+  if (!Number.isFinite(a) || !Number.isFinite(b)) return 0;
+  return Math.round((b - a) / 86400000) + 1;
+}
+
 export async function fetchMetaAdsDailySnapshot(startDate, endDate) {
   if (!startDate || !endDate) return EMPTY_SNAP;
 
-  const l1Key = `${startDate}|${endDate}`;
+  const key = `${startDate}|${endDate}`;
 
-  // L1: resposta instantânea se o período já está na memória desta sessão
-  if (_l1CacheKey === l1Key && _l1Cache) return _l1Cache;
+  // L1 hit
+  const cached = lruGet(key);
+  if (cached) return cached;
 
-  let result;
+  // In-flight: outra chamada com mesma key já está em andamento? Pega a promise.
+  const pending = _inFlight.get(key);
+  if (pending) return pending;
 
-  if (SMART_CACHE_ATIVO) {
-    // L2: cache IDB diferencial — só vai ao Firestore nos dias stale/ausentes
-    const dataArray = await fetchSmartDailyCollection("meta_ads_daily", startDate, endDate);
-    result = arrayToSnapLike(dataArray);
-  } else {
-    // Comportamento original: getDocs direto
-    const q = query(
-      collection(db, "meta_ads_daily"),
-      where("data", ">=", startDate),
-      where("data", "<=", endDate),
-    );
-    const snap = await getDocs(q).catch(() => EMPTY_SNAP);
-    result = (!snap || snap.empty) ? EMPTY_SNAP : snap;
+  // PATCH M: warn quando range é estranhamente grande pra ajudar a rastrear
+  // chamadas com parâmetro errado (ex.: "Ontem" carregando 13 dias).
+  if (import.meta.env.DEV) {
+    const dias = diasInclusivos(startDate, endDate);
+    if (dias > 35) {
+      console.warn(
+        `[metaAdsDailyCache] range grande: ${dias} dias (${startDate} → ${endDate}). ` +
+        "Stack:",
+        new Error().stack?.split("\n").slice(1, 6).join("\n"),
+      );
+    }
   }
 
-  // Salva no L1 para reuso imediato nesta sessão
-  _l1Cache = result;
-  _l1CacheKey = l1Key;
-  return result;
+  // Promise compartilhada entre todos os callers paralelos
+  const fetchPromise = (async () => {
+    let result;
+    if (SMART_CACHE_ATIVO) {
+      const dataArray = await fetchSmartDailyCollection("meta_ads_daily", startDate, endDate);
+      result = arrayToSnapLike(dataArray);
+    } else {
+      const q = query(
+        collection(db, "meta_ads_daily"),
+        where("data", ">=", startDate),
+        where("data", "<=", endDate),
+      );
+      const snap = await getDocs(q).catch(() => EMPTY_SNAP);
+      result = (!snap || snap.empty) ? EMPTY_SNAP : snap;
+    }
+    lruTouch(key, result);
+    return result;
+  })();
+
+  _inFlight.set(key, fetchPromise);
+  try {
+    return await fetchPromise;
+  } finally {
+    _inFlight.delete(key);
+  }
 }

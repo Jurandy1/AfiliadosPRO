@@ -5,6 +5,7 @@ const VERSIONS_TTL_MS = 30_000;
 
 let cachedVersions = null;
 let cachedVersionsTs = 0;
+let _inFlightPromise = null;  // PATCH M: dedup de chamadas paralelas
 
 function timestampToMs(value) {
   if (!value) return 0;
@@ -17,6 +18,9 @@ function timestampToMs(value) {
 /**
  * Versão composta Shopee + Meta para invalidar cache de período.
  * TTL curto em memória evita 2 reads a cada navegação dentro do mesmo minuto.
+ *
+ * PATCH M: in-flight dedup — se 3 componentes chamam ao mesmo tempo,
+ * só 1 fetch ao Firestore (os outros 2 esperam a mesma Promise).
  */
 export async function fetchDataVersions({ force = false } = {}) {
   const now = Date.now();
@@ -24,29 +28,43 @@ export async function fetchDataVersions({ force = false } = {}) {
     return cachedVersions;
   }
 
-  const [shopeeSnap, metaSnap] = await Promise.all([
-    getDoc(doc(db, "sync_state", "shopee_health")).catch(() => null),
-    getDoc(doc(db, "sync_state", "meta_health")).catch(() => null),
-  ]);
+  // Se há um fetch em andamento, devolve a mesma Promise
+  if (!force && _inFlightPromise) {
+    return _inFlightPromise;
+  }
 
-  const shopeeVer = Number(shopeeSnap?.exists?.() ? shopeeSnap.data()?.dataVersion : 0) || 0;
-  const meta = metaSnap?.exists?.() ? (metaSnap.data() || {}) : {};
-  const metaVer = Math.max(
-    timestampToMs(meta.lastDailySyncAt),
-    timestampToMs(meta.lastAdsSyncAt),
-    Number(meta.dataVersion || 0),
-  );
+  _inFlightPromise = (async () => {
+    try {
+      const [shopeeSnap, metaSnap] = await Promise.all([
+        getDoc(doc(db, "sync_state", "shopee_health")).catch(() => null),
+        getDoc(doc(db, "sync_state", "meta_health")).catch(() => null),
+      ]);
 
-  cachedVersions = {
-    shopeeVer,
-    metaVer,
-    versionKey: `${shopeeVer}:${metaVer}`,
-  };
-  cachedVersionsTs = now;
-  return cachedVersions;
+      const shopeeVer = Number(shopeeSnap?.exists?.() ? shopeeSnap.data()?.dataVersion : 0) || 0;
+      const meta = metaSnap?.exists?.() ? (metaSnap.data() || {}) : {};
+      const metaVer = Math.max(
+        timestampToMs(meta.lastDailySyncAt),
+        timestampToMs(meta.lastAdsSyncAt),
+        Number(meta.dataVersion || 0),
+      );
+
+      cachedVersions = {
+        shopeeVer,
+        metaVer,
+        versionKey: `${shopeeVer}:${metaVer}`,
+      };
+      cachedVersionsTs = Date.now();
+      return cachedVersions;
+    } finally {
+      _inFlightPromise = null;
+    }
+  })();
+
+  return _inFlightPromise;
 }
 
 export function invalidateDataVersionsCache() {
   cachedVersions = null;
   cachedVersionsTs = 0;
+  _inFlightPromise = null;
 }
