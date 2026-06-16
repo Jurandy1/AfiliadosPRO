@@ -585,6 +585,43 @@ function getStaleThresholdMs(dateStr) {
   return 7 * 24 * 60 * 60 * 1000;
 }
 
+/**
+ * PATCH G: throttle local de refresh_range por dia (sessionStorage).
+ * Evita que duas visitas seguidas ao mesmo dia passado disparem o backfill
+ * de novo. Hoje (15/jun) o log mostrou 14 disparos pro dia 14/06.
+ *
+ * "Hoje" (BRT) NUNCA passa por este throttle — segue sincronizando ao vivo.
+ * "Atualizar" no painel passa { force: true } e também ignora o throttle.
+ */
+const REFRESH_LOCAL_THROTTLE_MS = 15 * 60 * 1000;
+const REFRESH_LOCAL_KEY_PREFIX = "afilia:last_refresh_";
+
+function lerLastRefreshLocal(dateStr) {
+  try {
+    if (typeof window === "undefined") return 0;
+    const v = window.sessionStorage.getItem(REFRESH_LOCAL_KEY_PREFIX + dateStr);
+    return v ? Number(v) || 0 : 0;
+  } catch {
+    return 0;
+  }
+}
+
+function gravarLastRefreshLocal(dateStr) {
+  try {
+    if (typeof window === "undefined") return;
+    window.sessionStorage.setItem(REFRESH_LOCAL_KEY_PREFIX + dateStr, String(Date.now()));
+  } catch {
+    /* ignora quota/private mode */
+  }
+}
+
+function diaPassouThrottleLocal(dateStr, hojeStr) {
+  if (!dateStr || dateStr === hojeStr) return false; // hoje sempre passa
+  const last = lerLastRefreshLocal(dateStr);
+  if (last <= 0) return false;
+  return (Date.now() - last) < REFRESH_LOCAL_THROTTLE_MS;
+}
+
 function isDailyMetricsVazio(data) {
   const pedidos = Number(data?.pedidos || 0);
   const vendas = Number(data?.vendas ?? data?.qtd_itens ?? 0);
@@ -851,14 +888,32 @@ export async function garantirDadosAtualizados(startDate, endDate, { forceAll = 
   }
 
   if (isDiaUnico && isDiaRecenteBRT(startDate, hojeStr) && startDate !== hojeStr) {
+    // PATCH G: se já sincronizamos esse dia há menos de 15 min nesta sessão,
+    // pula. Dado granular já foi gravado e o cache do período cobre o resto.
+    if (!forceAll && diaPassouThrottleLocal(startDate, hojeStr)) {
+      return {
+        refreshed: false,
+        stale: [startDate],
+        throttled: true,
+        throttledLocal: true,
+        mode: startDate === ontemStr ? "ontem_local_throttle" : "dia_recente_local_throttle",
+        metaSync,
+      };
+    }
     const shopee = await sincronizarDiaUnico(startDate, {
       label: startDate === ontemStr ? "ontem" : "dia_recente",
     });
+    if (shopee?.refreshed && !shopee.throttled) {
+      gravarLastRefreshLocal(startDate);
+    }
     return { ...shopee, metaSync };
   }
 
   if (forceAll && isDiaUnico) {
     const shopee = await sincronizarDiaUnico(startDate, { label: "force_dia" });
+    if (shopee?.refreshed && !shopee.throttled) {
+      gravarLastRefreshLocal(startDate);
+    }
     return { ...shopee, metaSync };
   }
 

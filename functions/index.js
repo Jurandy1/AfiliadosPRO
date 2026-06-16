@@ -4819,9 +4819,15 @@ async function runShopeeSync({
     const isReconcile = /reconcile/i.test(String(label || ""));
     const isBackfill = /^backfill_/i.test(String(label || ""));
     const isManualRefresh = /^refresh_/i.test(String(label || ""));
-    const throttleMs = (isReconcile || isBackfill || isManualRefresh)
+    // PATCH G: refresh_range_* agora respeita throttle de 15 min. Antes era 0,
+    // o que fazia o mês corrente ser reconstruído a cada visita do painel
+    // (logs 15/06: 13 rebuilds num dia, ~39k reads). Reconcile e backfill
+    // continuam com throttle 0 porque são operações intencionais/explícitas.
+    const throttleMs = (isReconcile || isBackfill)
       ? 0
-      : 30 * 60 * 1000;
+      : isManualRefresh
+        ? 15 * 60 * 1000
+        : 30 * 60 * 1000;
 
     try {
       const r = await refreshMonthlyBucketsForDates(db, diasRollup, { throttleMs });
