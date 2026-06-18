@@ -9,6 +9,7 @@
     "preview": "vite preview --host 127.0.0.1 --port 5173"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.108.2",
     "chart.js": "^4.4.1",
     "firebase": "^11.0.0",
     "lucide-react": "^0.383.0",

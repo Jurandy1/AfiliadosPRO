@@ -12,3 +12,18 @@ scripts/out/*.json
 scripts/out/*.txt
 !scripts/out/.gitkeep
 output/
+ 
+# ===== SEGURANCA - NUNCA COMMITAR ===== 
+serviceAccountKey.json 
+serviceAccountKey.json.DESABILITADO 
+functions/serviceAccountKey.json 
+functions/serviceAccountKey.json.DESABILITADO 
+supabase-credenciais.env 
+*credenciais*.env 
+.env 
+.env.* 
+*.env 
+firebase-adminsdk*.json 
+projetoafiliado*firebase*.json 
+ 
+# ===== SEGURANCA - NUNCA COMMITAR ===== 
