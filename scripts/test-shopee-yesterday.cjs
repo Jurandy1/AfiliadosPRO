@@ -118,39 +118,39 @@ async function shopeeQueryProxy(proxyUrl, proxySecret, bodyObj) {
   return json.data;
 }
 
-const CONVERSION_QUERY = `
-query ConversionReport($purchaseTimeStart: Int, $purchaseTimeEnd: Int, $limit: Int, $scrollId: String) {
-  conversionReport(
-    purchaseTimeStart: $purchaseTimeStart
-    purchaseTimeEnd: $purchaseTimeEnd
-    limit: $limit
-    scrollId: $scrollId
-  ) {
-    nodes {
-      purchaseTime
-      conversionId
-      utmContent
-      totalCommission
-      netCommission
-      orders {
-        orderId
-        orderStatus
-        items {
-          actualAmount
-          qty
-          itemTotalCommission
-          completeTime
-          fraudStatus
+function buildShopeeQuery(startTs, endTs, limit, scrollId) {
+  const scrollClause = scrollId ? `, scrollId: ${JSON.stringify(scrollId)}` : "";
+  return `{
+    conversionReport(
+      limit: ${limit},
+      purchaseTimeStart: ${startTs},
+      purchaseTimeEnd: ${endTs}${scrollClause}
+    ) {
+      nodes {
+        purchaseTime
+        conversionId
+        utmContent
+        totalCommission
+        netCommission
+        orders {
+          orderId
+          orderStatus
+          items {
+            actualAmount
+            qty
+            itemTotalCommission
+            completeTime
+            fraudStatus
+          }
         }
       }
+      pageInfo {
+        hasNextPage
+        scrollId
+      }
     }
-    pageInfo {
-      limit
-      hasNextPage
-      scrollId
-    }
-  }
-}`;
+  }`;
+}
 
 function num(v) {
   const n = Number(v ?? 0);
@@ -202,13 +202,7 @@ async function fetchAllNodes(queryFn, dateStr) {
   do {
     page += 1;
     const data = await queryFn({
-      query: CONVERSION_QUERY,
-      variables: {
-        purchaseTimeStart,
-        purchaseTimeEnd,
-        limit: PAGE_LIMIT,
-        scrollId: scrollId || null,
-      },
+      query: buildShopeeQuery(purchaseTimeStart, purchaseTimeEnd, PAGE_LIMIT, scrollId || null),
     });
     const result = data.conversionReport;
     const nodes = result?.nodes ?? [];

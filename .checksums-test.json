@@ -1,0 +1,452 @@
+{
+  "2026-06-01": {
+    "hash": "9fcfcd94c06a9177",
+    "fingerprint": {
+      "conversoes": 845,
+      "pedidosDistintos": 845,
+      "comissaoTotal": 1919.3,
+      "gmvTotal": 39701.27,
+      "itensTotal": 870,
+      "hashStatus": "082d17739a54ea00",
+      "hashFraud": "0e1cd34cd7e9b6f7",
+      "hashCompleteTime": "f52cf8a92a36e909",
+      "hashConversionIds": "c7e7ddff7ef866f3"
+    },
+    "pulledAt": "2026-06-18T02:48:27.187Z"
+  },
+  "2026-06-02": {
+    "hash": "a6e9a68e8c1e799d",
+    "fingerprint": {
+      "conversoes": 736,
+      "pedidosDistintos": 736,
+      "comissaoTotal": 1891.79,
+      "gmvTotal": 37444.51,
+      "itensTotal": 713,
+      "hashStatus": "6d27a629f018e7ab",
+      "hashFraud": "1a31fbfcf2b62c9a",
+      "hashCompleteTime": "d1f512b8eedea62c",
+      "hashConversionIds": "62bdbb5bb95b4894"
+    },
+    "pulledAt": "2026-06-18T02:48:57.982Z"
+  },
+  "2026-06-03": {
+    "hash": "127212c4cead365b",
+    "fingerprint": {
+      "conversoes": 585,
+      "pedidosDistintos": 585,
+      "comissaoTotal": 1545.68,
+      "gmvTotal": 30293.52,
+      "itensTotal": 603,
+      "hashStatus": "1015e35fc157a82f",
+      "hashFraud": "1a2a5fb8fe4b1cdc",
+      "hashCompleteTime": "ddbc26bafe26530b",
+      "hashConversionIds": "b81476c0c74a075e"
+    },
+    "pulledAt": "2026-06-18T02:49:28.905Z"
+  },
+  "2026-06-04": {
+    "hash": "4d1b6a3951dcd2ca",
+    "fingerprint": {
+      "conversoes": 585,
+      "pedidosDistintos": 585,
+      "comissaoTotal": 1757.09,
+      "gmvTotal": 29093.51,
+      "itensTotal": 575,
+      "hashStatus": "061109a3decab52f",
+      "hashFraud": "dafb92fc795097b0",
+      "hashCompleteTime": "87946a021bd2e22c",
+      "hashConversionIds": "869b6c4919d610ab"
+    },
+    "pulledAt": "2026-06-18T02:49:59.818Z"
+  },
+  "2026-06-05": {
+    "hash": "3f24ca922db3c7da",
+    "fingerprint": {
+      "conversoes": 621,
+      "pedidosDistintos": 621,
+      "comissaoTotal": 1602.54,
+      "gmvTotal": 31596.71,
+      "itensTotal": 630,
+      "hashStatus": "c7976bb8197d42c4",
+      "hashFraud": "f1cb4e6ac8885c8e",
+      "hashCompleteTime": "90638a8b2dfb0edd",
+      "hashConversionIds": "55e6394b92d02191"
+    },
+    "pulledAt": "2026-06-18T02:50:30.863Z"
+  },
+  "2026-06-06": {
+    "hash": "31a82f3c7a326ab4",
+    "fingerprint": {
+      "conversoes": 899,
+      "pedidosDistintos": 899,
+      "comissaoTotal": 3762.04,
+      "gmvTotal": 47080.07,
+      "itensTotal": 932,
+      "hashStatus": "3a33f3579c71de2e",
+      "hashFraud": "49e6f503e59c115f",
+      "hashCompleteTime": "71c542fcf1707cc2",
+      "hashConversionIds": "6be1ea4037fa0fa4"
+    },
+    "pulledAt": "2026-06-18T02:51:01.863Z"
+  },
+  "2026-06-07": {
+    "hash": "6ca2a15d33e78051",
+    "fingerprint": {
+      "conversoes": 785,
+      "pedidosDistintos": 785,
+      "comissaoTotal": 2288.65,
+      "gmvTotal": 35406.33,
+      "itensTotal": 765,
+      "hashStatus": "7e98d855aa8b1368",
+      "hashFraud": "ab0a8dc4c8c2ac7a",
+      "hashCompleteTime": "241c32167c4be54e",
+      "hashConversionIds": "48dcefd41b8d26cf"
+    },
+    "pulledAt": "2026-06-18T02:51:32.875Z"
+  },
+  "2026-06-08": {
+    "hash": "5a156e1ea96b365c",
+    "fingerprint": {
+      "conversoes": 682,
+      "pedidosDistintos": 682,
+      "comissaoTotal": 1890.81,
+      "gmvTotal": 32092.09,
+      "itensTotal": 671,
+      "hashStatus": "b9b1efe121cf69e8",
+      "hashFraud": "ea753231deffe142",
+      "hashCompleteTime": "42946f03b6d489b0",
+      "hashConversionIds": "80cc9aa4e156ac4c"
+    },
+    "pulledAt": "2026-06-18T02:52:03.864Z"
+  },
+  "2026-06-09": {
+    "hash": "b546511a0dfd408c",
+    "fingerprint": {
+      "conversoes": 734,
+      "pedidosDistintos": 734,
+      "comissaoTotal": 2053.82,
+      "gmvTotal": 34869.81,
+      "itensTotal": 711,
+      "hashStatus": "a77f76c354b29a8d",
+      "hashFraud": "323650d2d73bd858",
+      "hashCompleteTime": "a2a9eb487063b797",
+      "hashConversionIds": "bb57c55e68b5a697"
+    },
+    "pulledAt": "2026-06-18T02:52:34.919Z"
+  },
+  "2026-06-10": {
+    "hash": "f7d0b75d2ea9220b",
+    "fingerprint": {
+      "conversoes": 699,
+      "pedidosDistintos": 699,
+      "comissaoTotal": 2140.39,
+      "gmvTotal": 37994.77,
+      "itensTotal": 690,
+      "hashStatus": "0130594b017ce607",
+      "hashFraud": "713bc410bb582398",
+      "hashCompleteTime": "31ab813447ba2cc6",
+      "hashConversionIds": "c1504ea105ededb8"
+    },
+    "pulledAt": "2026-06-18T02:53:05.830Z"
+  },
+  "2026-06-11": {
+    "hash": "d6dc309a94b06b18",
+    "fingerprint": {
+      "conversoes": 668,
+      "pedidosDistintos": 668,
+      "comissaoTotal": 1847.9,
+      "gmvTotal": 34045.72,
+      "itensTotal": 658,
+      "hashStatus": "7def063c93f57eb9",
+      "hashFraud": "2a3ee1895fa5f253",
+      "hashCompleteTime": "86cf2e9eb359433f",
+      "hashConversionIds": "ed40d906b7f96a3d"
+    },
+    "pulledAt": "2026-06-18T02:53:36.968Z"
+  },
+  "2026-06-12": {
+    "hash": "6b50a8ab9f918795",
+    "fingerprint": {
+      "conversoes": 593,
+      "pedidosDistintos": 593,
+      "comissaoTotal": 2051.73,
+      "gmvTotal": 33000.7,
+      "itensTotal": 603,
+      "hashStatus": "39027fd1e1580d32",
+      "hashFraud": "ee299485282410ce",
+      "hashCompleteTime": "5b85a45a44c67f9d",
+      "hashConversionIds": "eafcb4a716b5ff49"
+    },
+    "pulledAt": "2026-06-18T02:54:07.758Z"
+  },
+  "2026-06-13": {
+    "hash": "74ac7f32a86a78a3",
+    "fingerprint": {
+      "conversoes": 540,
+      "pedidosDistintos": 540,
+      "comissaoTotal": 1656.61,
+      "gmvTotal": 25125.73,
+      "itensTotal": 547,
+      "hashStatus": "97d5c78304b74bf5",
+      "hashFraud": "8386454048693c2f",
+      "hashCompleteTime": "11aa4f29176c4733",
+      "hashConversionIds": "9b7ac4f7c6891edc"
+    },
+    "pulledAt": "2026-06-18T02:54:38.718Z"
+  },
+  "2026-06-14": {
+    "hash": "244f0ff771ff5122",
+    "fingerprint": {
+      "conversoes": 718,
+      "pedidosDistintos": 718,
+      "comissaoTotal": 2159.75,
+      "gmvTotal": 39328.35,
+      "itensTotal": 691,
+      "hashStatus": "27c58e6353f82909",
+      "hashFraud": "ae1ef2f9ac439314",
+      "hashCompleteTime": "06bba4145c54b844",
+      "hashConversionIds": "d04ccde73f15b4b5"
+    },
+    "pulledAt": "2026-06-18T02:55:09.909Z"
+  },
+  "2026-06-15": {
+    "hash": "3dcbe3342ce48afb",
+    "fingerprint": {
+      "conversoes": 835,
+      "pedidosDistintos": 835,
+      "comissaoTotal": 2404.13,
+      "gmvTotal": 42152.69,
+      "itensTotal": 847,
+      "hashStatus": "524334533acad717",
+      "hashFraud": "d86096ec1a9ee179",
+      "hashCompleteTime": "2656f011e8202d8f",
+      "hashConversionIds": "98e816c2a75be798"
+    },
+    "pulledAt": "2026-06-18T02:55:40.877Z"
+  },
+  "2026-06-16": {
+    "hash": "63198fcf85b75674",
+    "fingerprint": {
+      "conversoes": 689,
+      "pedidosDistintos": 689,
+      "comissaoTotal": 2048.11,
+      "gmvTotal": 40475.84,
+      "itensTotal": 689,
+      "hashStatus": "adf48666f5a1fb80",
+      "hashFraud": "f31e6937e2ab5e71",
+      "hashCompleteTime": "2c1dcbca7d6e41fc",
+      "hashConversionIds": "c07623661454ae14"
+    },
+    "pulledAt": "2026-06-18T02:56:11.931Z"
+  },
+  "2026-06-17": {
+    "hash": "af09c587661ca2fc",
+    "fingerprint": {
+      "conversoes": 0,
+      "pedidosDistintos": 0,
+      "comissaoTotal": 0,
+      "gmvTotal": 0,
+      "itensTotal": 0,
+      "hashStatus": "da39a3ee5e6b4b0d",
+      "hashFraud": "da39a3ee5e6b4b0d",
+      "hashCompleteTime": "da39a3ee5e6b4b0d",
+      "hashConversionIds": "da39a3ee5e6b4b0d"
+    },
+    "pulledAt": "2026-06-18T02:56:41.987Z"
+  },
+  "2026-06-18": {
+    "hash": "af09c587661ca2fc",
+    "fingerprint": {
+      "conversoes": 0,
+      "pedidosDistintos": 0,
+      "comissaoTotal": 0,
+      "gmvTotal": 0,
+      "itensTotal": 0,
+      "hashStatus": "da39a3ee5e6b4b0d",
+      "hashFraud": "da39a3ee5e6b4b0d",
+      "hashCompleteTime": "da39a3ee5e6b4b0d",
+      "hashConversionIds": "da39a3ee5e6b4b0d"
+    },
+    "pulledAt": "2026-06-18T02:57:12.887Z"
+  },
+  "2026-06-19": {
+    "hash": "af09c587661ca2fc",
+    "fingerprint": {
+      "conversoes": 0,
+      "pedidosDistintos": 0,
+      "comissaoTotal": 0,
+      "gmvTotal": 0,
+      "itensTotal": 0,
+      "hashStatus": "da39a3ee5e6b4b0d",
+      "hashFraud": "da39a3ee5e6b4b0d",
+      "hashCompleteTime": "da39a3ee5e6b4b0d",
+      "hashConversionIds": "da39a3ee5e6b4b0d"
+    },
+    "pulledAt": "2026-06-18T02:57:43.999Z"
+  },
+  "2026-06-20": {
+    "hash": "af09c587661ca2fc",
+    "fingerprint": {
+      "conversoes": 0,
+      "pedidosDistintos": 0,
+      "comissaoTotal": 0,
+      "gmvTotal": 0,
+      "itensTotal": 0,
+      "hashStatus": "da39a3ee5e6b4b0d",
+      "hashFraud": "da39a3ee5e6b4b0d",
+      "hashCompleteTime": "da39a3ee5e6b4b0d",
+      "hashConversionIds": "da39a3ee5e6b4b0d"
+    },
+    "pulledAt": "2026-06-18T02:58:14.907Z"
+  },
+  "2026-06-21": {
+    "hash": "af09c587661ca2fc",
+    "fingerprint": {
+      "conversoes": 0,
+      "pedidosDistintos": 0,
+      "comissaoTotal": 0,
+      "gmvTotal": 0,
+      "itensTotal": 0,
+      "hashStatus": "da39a3ee5e6b4b0d",
+      "hashFraud": "da39a3ee5e6b4b0d",
+      "hashCompleteTime": "da39a3ee5e6b4b0d",
+      "hashConversionIds": "da39a3ee5e6b4b0d"
+    },
+    "pulledAt": "2026-06-18T02:58:45.944Z"
+  },
+  "2026-06-22": {
+    "hash": "af09c587661ca2fc",
+    "fingerprint": {
+      "conversoes": 0,
+      "pedidosDistintos": 0,
+      "comissaoTotal": 0,
+      "gmvTotal": 0,
+      "itensTotal": 0,
+      "hashStatus": "da39a3ee5e6b4b0d",
+      "hashFraud": "da39a3ee5e6b4b0d",
+      "hashCompleteTime": "da39a3ee5e6b4b0d",
+      "hashConversionIds": "da39a3ee5e6b4b0d"
+    },
+    "pulledAt": "2026-06-18T02:59:16.899Z"
+  },
+  "2026-06-23": {
+    "hash": "af09c587661ca2fc",
+    "fingerprint": {
+      "conversoes": 0,
+      "pedidosDistintos": 0,
+      "comissaoTotal": 0,
+      "gmvTotal": 0,
+      "itensTotal": 0,
+      "hashStatus": "da39a3ee5e6b4b0d",
+      "hashFraud": "da39a3ee5e6b4b0d",
+      "hashCompleteTime": "da39a3ee5e6b4b0d",
+      "hashConversionIds": "da39a3ee5e6b4b0d"
+    },
+    "pulledAt": "2026-06-18T02:59:47.991Z"
+  },
+  "2026-06-24": {
+    "hash": "af09c587661ca2fc",
+    "fingerprint": {
+      "conversoes": 0,
+      "pedidosDistintos": 0,
+      "comissaoTotal": 0,
+      "gmvTotal": 0,
+      "itensTotal": 0,
+      "hashStatus": "da39a3ee5e6b4b0d",
+      "hashFraud": "da39a3ee5e6b4b0d",
+      "hashCompleteTime": "da39a3ee5e6b4b0d",
+      "hashConversionIds": "da39a3ee5e6b4b0d"
+    },
+    "pulledAt": "2026-06-18T03:00:18.920Z"
+  },
+  "2026-06-25": {
+    "hash": "af09c587661ca2fc",
+    "fingerprint": {
+      "conversoes": 0,
+      "pedidosDistintos": 0,
+      "comissaoTotal": 0,
+      "gmvTotal": 0,
+      "itensTotal": 0,
+      "hashStatus": "da39a3ee5e6b4b0d",
+      "hashFraud": "da39a3ee5e6b4b0d",
+      "hashCompleteTime": "da39a3ee5e6b4b0d",
+      "hashConversionIds": "da39a3ee5e6b4b0d"
+    },
+    "pulledAt": "2026-06-18T03:00:49.992Z"
+  },
+  "2026-06-26": {
+    "hash": "af09c587661ca2fc",
+    "fingerprint": {
+      "conversoes": 0,
+      "pedidosDistintos": 0,
+      "comissaoTotal": 0,
+      "gmvTotal": 0,
+      "itensTotal": 0,
+      "hashStatus": "da39a3ee5e6b4b0d",
+      "hashFraud": "da39a3ee5e6b4b0d",
+      "hashCompleteTime": "da39a3ee5e6b4b0d",
+      "hashConversionIds": "da39a3ee5e6b4b0d"
+    },
+    "pulledAt": "2026-06-18T03:01:20.896Z"
+  },
+  "2026-06-27": {
+    "hash": "af09c587661ca2fc",
+    "fingerprint": {
+      "conversoes": 0,
+      "pedidosDistintos": 0,
+      "comissaoTotal": 0,
+      "gmvTotal": 0,
+      "itensTotal": 0,
+      "hashStatus": "da39a3ee5e6b4b0d",
+      "hashFraud": "da39a3ee5e6b4b0d",
+      "hashCompleteTime": "da39a3ee5e6b4b0d",
+      "hashConversionIds": "da39a3ee5e6b4b0d"
+    },
+    "pulledAt": "2026-06-18T03:01:52.016Z"
+  },
+  "2026-06-28": {
+    "hash": "af09c587661ca2fc",
+    "fingerprint": {
+      "conversoes": 0,
+      "pedidosDistintos": 0,
+      "comissaoTotal": 0,
+      "gmvTotal": 0,
+      "itensTotal": 0,
+      "hashStatus": "da39a3ee5e6b4b0d",
+      "hashFraud": "da39a3ee5e6b4b0d",
+      "hashCompleteTime": "da39a3ee5e6b4b0d",
+      "hashConversionIds": "da39a3ee5e6b4b0d"
+    },
+    "pulledAt": "2026-06-18T03:02:22.962Z"
+  },
+  "2026-06-29": {
+    "hash": "af09c587661ca2fc",
+    "fingerprint": {
+      "conversoes": 0,
+      "pedidosDistintos": 0,
+      "comissaoTotal": 0,
+      "gmvTotal": 0,
+      "itensTotal": 0,
+      "hashStatus": "da39a3ee5e6b4b0d",
+      "hashFraud": "da39a3ee5e6b4b0d",
+      "hashCompleteTime": "da39a3ee5e6b4b0d",
+      "hashConversionIds": "da39a3ee5e6b4b0d"
+    },
+    "pulledAt": "2026-06-18T03:02:53.994Z"
+  },
+  "2026-06-30": {
+    "hash": "af09c587661ca2fc",
+    "fingerprint": {
+      "conversoes": 0,
+      "pedidosDistintos": 0,
+      "comissaoTotal": 0,
+      "gmvTotal": 0,
+      "itensTotal": 0,
+      "hashStatus": "da39a3ee5e6b4b0d",
+      "hashFraud": "da39a3ee5e6b4b0d",
+      "hashCompleteTime": "da39a3ee5e6b4b0d",
+      "hashConversionIds": "da39a3ee5e6b4b0d"
+    },
+    "pulledAt": "2026-06-18T03:03:24.914Z"
+  }
+}
