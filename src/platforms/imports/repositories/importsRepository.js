@@ -31,7 +31,7 @@ async function deleteCollectionDocs(table) {
 async function cleanupImportedDataByTipo(tipo) {
   if (tipo === "shopee_venda") {
     const produtosRemovidos = await deleteCollectionDocs("produtos");
-    const subIdsRemovidos = await deleteCollectionDocs("subid_vendas"); // Assuming this is also mapped or we just ignore if missing
+    const subIdsRemovidos = await deleteCollectionDocs("subids"); // Assuming this is also mapped or we just ignore if missing
     invalidateDashboardCaches();
     return { produtosRemovidos, subIdsRemovidos };
   }

@@ -1138,14 +1138,14 @@ export async function getSubIdVendasMap({ subIds } = {}) {
   if (ids.length > 0) {
     for (let i = 0; i < ids.length; i += 30) {
       const chunk = ids.slice(i, i + 30);
-      const { data: subVendasData } = await supabase.from("subid_vendas").select("*").in("id", chunk);
+      const { data: subVendasData } = await supabase.from("subids").select("*").in("id", chunk);
       const snap = { docs: (subVendasData||[]).map(d => ({ data: () => d })) };
       snap.docs.forEach(applyDoc);
     }
     return map;
   }
 
-  const { data: svData } = await supabase.from("subid_vendas").select("*").limit(500);
+  const { data: svData } = await supabase.from("subids").select("*").limit(500);
   const snap = { forEach: (cb) => (svData||[]).forEach(d => cb({ id: d.doc_id || d.data || d.key, data: () => d })) };
   snap.forEach(applyDoc);
   return map;

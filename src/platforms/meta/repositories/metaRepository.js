@@ -24,7 +24,7 @@ export async function getMetaAds(importacaoId = null) {
     return idbEntry.data;
   }
 
-  let query = supabase.from("meta_ads").select("id, data_blob");
+  let query = supabase.from("meta_ads").select("ad_id, data_blob");
   if (importacaoId) {
     query = query.eq("data_blob->>importacaoId", importacaoId);
   }
@@ -35,7 +35,7 @@ export async function getMetaAds(importacaoId = null) {
     return [];
   }
   
-  const result = (snap || []).map((d) => ({ id: d.id, ...(d.data_blob || {}) }));
+  const result = (snap || []).map((d) => ({ id: d.ad_id, ...(d.data_blob || {}) }));
   
   const entry = { data: result, ts: Date.now() };
   metaAdsCache.set(cacheKey, entry);
@@ -51,11 +51,11 @@ export function clearMetaAdsCache() {
 export async function getMetaDemographics() {
   const { data: snap, error } = await supabase
     .from("meta_demographics")
-    .select("id, data_blob")
+    .select("ad_id, data_blob")
     .order("data_blob->>importadoEm", { ascending: false })
     .limit(1);
     
   if (error || !snap || snap.length === 0) return null;
   const docSnap = snap[0];
-  return { id: docSnap.id, ...(docSnap.data_blob || {}) };
+  return { id: docSnap.ad_id, ...(docSnap.data_blob || {}) };
 }

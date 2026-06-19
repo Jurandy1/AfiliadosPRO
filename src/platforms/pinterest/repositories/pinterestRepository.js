@@ -5,7 +5,7 @@
 import { supabase } from "../../../services/supabase/client";
 
 export async function getPinterest(importacaoId = null) {
-  let query = supabase.from("pinterest_ads").select("id, data_blob");
+  let query = supabase.from("pinterest_ads").select("ad_id, data_blob");
   if (importacaoId) {
     query = query.eq("data_blob->>importacaoId", importacaoId);
   }
@@ -14,5 +14,5 @@ export async function getPinterest(importacaoId = null) {
     console.warn("Erro lendo pinterest_ads:", error);
     return [];
   }
-  return (snap || []).map((d) => ({ id: d.id, ...(d.data_blob || {}) }));
+  return (snap || []).map((d) => ({ id: d.ad_id, ...(d.data_blob || {}) }));
 }
