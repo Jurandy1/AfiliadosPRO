@@ -8,8 +8,19 @@ async function syncToSupabase(supabase, upserts, deletes) {
   const startedAt = Date.now();
 
   try {
-    for (const collection of Object.keys(upserts)) {
-      const rows = upserts[collection] || [];
+    let groupedUpserts = upserts;
+    if (Array.isArray(upserts)) {
+      groupedUpserts = {};
+      for (const item of upserts) {
+        const col = item.tabela || item.collection;
+        if (!col) continue;
+        if (!groupedUpserts[col]) groupedUpserts[col] = [];
+        groupedUpserts[col].push(item);
+      }
+    }
+
+    for (const collection of Object.keys(groupedUpserts)) {
+      const rows = groupedUpserts[collection] || [];
       if (rows.length === 0) continue;
 
       let tabela = collection;
@@ -21,19 +32,40 @@ async function syncToSupabase(supabase, upserts, deletes) {
           tabela = "shopee_daily";
           onConflict = "data";
           mappedRows = rows.map(({ id, data }) => ({
-            ...data,
             data: data.data || id,
-            updatedAt: new Date().toISOString()
+            pedidos: data.pedidos || 0,
+            vendas: data.vendas || 0,
+            qtd_itens: data.qtd_itens || 0,
+            comissao: data.comissao_total || data.comissao_estimada || data.comissao || 0,
+            comissao_concluida: data.comissao_concluida || 0,
+            comissao_pendente: data.comissao_pendente || 0,
+            comissao_cancelada: data.comissao_cancelada || data.perdas_comissao || 0,
+            fat_bruto: data.faturamento || data.fat_bruto || data.gmv_total || 0,
+            pedidos_pendentes: data.pedidos_pendentes || 0,
+            pedidos_cancelados: data.pedidos_cancelados || 0,
+            pedidos_completos: data.pedidos_concluidos || data.pedidos_completos || 0,
+            agg_mode: data.aggregation_mode || data.agg_mode || 'promosapp',
+            ultima_sync: new Date().toISOString()
           }));
           break;
 
         case "subid_daily":
           tabela = "subid_daily";
           onConflict = "data,subid";
-          mappedRows = rows.map(({ data }) => ({
-            ...data,
+          mappedRows = rows.map(({ id, data }) => ({
+            data: data.data || id.split('_')[0],
             subid: data.subid || "(sem_subid)",
-            updatedAt: new Date().toISOString()
+            comissoes: data.comissoes || data.comissao_real || data.comissao_total || 0,
+            comissoes_estimadas: data.comissoes_estimadas || data.comissao_estimada || 0,
+            faturamento: data.faturamento || data.gmv_total || 0,
+            vendas_diretas: data.vendas_diretas || 0,
+            vendas_indiretas: data.vendas_indiretas || 0,
+            qtd_itens: data.qtd_itens || 0,
+            total_vendas: data.total_vendas || data.vendas || 0,
+            pedidos: data.pedidos || 0,
+            cliques_anuncio: data.cliques_anuncio || 0,
+            cliques_shopee: data.cliques_shopee || 0,
+            ultima_sync: new Date().toISOString()
           }));
           break;
 
@@ -78,18 +110,34 @@ async function syncToSupabase(supabase, upserts, deletes) {
         case "meta_ads_daily":
           tabela = "meta_ads_daily";
           onConflict = "data,subid,ad_id";
-          mappedRows = rows.map(({ data }) => ({
-            ...data,
+          mappedRows = rows.map(({ id, data }) => ({
+            data: data.data || id.split('_')[0],
+            subid: data.subid || '(sem_subid)',
+            account_id: data.account_id || data._accountId || '',
+            campaign_id: data.campaign_id || '',
+            campaign_name: data.campaign_name || '',
+            adset_id: data.adset_id || '',
             ad_id: String(data.adId || data.ad_id || ""),
-            subid: data.subid || "(sem_subid)",
-            updatedAt: new Date().toISOString()
+            gasto: data.gasto || data.valorUsado || data.spend || 0,
+            impressoes: data.impressoes || data.impressions || 0,
+            cliques: data.cliques || data.cliquesTotal || data.clicks || 0,
+            ctr: data.ctr || 0,
+            cpc: data.cpc || 0,
+            ultima_sync: new Date().toISOString()
           }));
-          // Remove adId from payload se existir, o Supabase espera ad_id
-          mappedRows.forEach(r => delete r.adId);
           break;
 
         case "meta_demographics":
           tabela = "meta_demographics";
+          onConflict = "id";
+          mappedRows = rows.map(({ id, data }) => ({
+            id,
+            data_blob: data,
+          }));
+          break;
+
+        case "sync_state":
+          tabela = "sync_state";
           onConflict = "id";
           mappedRows = rows.map(({ id, data }) => ({
             id,

@@ -1072,6 +1072,8 @@ function firestoreTimestampToDate(value) {
   if (!value) return null;
   if (value instanceof Date) return value;
   if (typeof value.toDate === "function") return value.toDate();
+  if (typeof value === "string") return new Date(value);
+  if (value._seconds) return new Date(value._seconds * 1000);
   return null;
 }
 
@@ -1079,12 +1081,12 @@ function firestoreTimestampToDate(value) {
 export async function getSyncHealthStatus() {
   try {
     const [shopeeSnap, metaSnap, ultimaHoje] = await Promise.all([
-      getDoc(doc(db, "sync_state", "shopee_health")).catch(() => null),
-      getDoc(doc(db, "sync_state", "meta_health")).catch(() => null),
+      supabase.from("sync_state").select("data_blob").eq("id", "shopee_health").single().then(r => r.data || null).catch(() => null),
+      supabase.from("sync_state").select("data_blob").eq("id", "meta_health").single().then(r => r.data || null).catch(() => null),
       getUltimaAtualizacaoHoje(),
     ]);
-    const shopee = shopeeSnap?.exists?.() ? (shopeeSnap.data() || {}) : {};
-    const meta = metaSnap?.data ? (metaSnap.data.data_blob || {}) : {};
+    const shopee = shopeeSnap?.data_blob || {};
+    const meta = metaSnap?.data_blob || {};
     return {
       shopee: {
         lastIncrementalAt: firestoreTimestampToDate(shopee.lastIncrementalAt),

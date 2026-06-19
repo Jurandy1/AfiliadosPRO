@@ -28,6 +28,7 @@ const SUPABASE_KEY = process.env.VITE_SUPABASE_SERVICE_ROLE_KEY || process.env.S
 
 let supabase = null;
 if (SUPABASE_URL && SUPABASE_KEY) {
+  global.WebSocket = require("ws");
   supabase = createClient(SUPABASE_URL, SUPABASE_KEY, {
     auth: { persistSession: false },
   });

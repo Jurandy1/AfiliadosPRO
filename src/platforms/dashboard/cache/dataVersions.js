@@ -10,6 +10,7 @@ function timestampToMs(value) {
   if (!value) return 0;
   if (typeof value.toMillis === "function") return value.toMillis();
   if (typeof value.seconds === "number") return value.seconds * 1000;
+  if (typeof value === "string") return new Date(value).getTime();
   if (value instanceof Date) return value.getTime();
   return 0;
 }
@@ -35,8 +36,8 @@ export async function fetchDataVersions({ force = false } = {}) {
   _inFlightPromise = (async () => {
     try {
       const [shopeeSnap, metaSnap] = await Promise.all([
-        supabase.from("sync_state").select("data_blob").eq("key", "shopee_health").single().then(r => r.error ? { error: r.error } : r),
-        supabase.from("sync_state").select("data_blob").eq("key", "meta_health").single().then(r => r.error ? { error: r.error } : r),
+        supabase.from("sync_state").select("data_blob").eq("id", "shopee_health").single().then(r => r.error ? { error: r.error } : r),
+        supabase.from("sync_state").select("data_blob").eq("id", "meta_health").single().then(r => r.error ? { error: r.error } : r),
       ]);
 
       const shopeeData = shopeeSnap?.data?.data_blob || {};
