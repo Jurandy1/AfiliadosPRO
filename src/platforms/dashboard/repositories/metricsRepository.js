@@ -241,16 +241,16 @@ export async function getDashboardKPIsByPeriod(startDate, endDate, settings = {}
     tot.comissao_pendente += x.comissao_pendente || 0;
     tot.comissao_cancelada += x.comissao_cancelada || 0;
     tot.comissao_estimada += comDia;
-    tot.fat_bruto += (x.faturamento ?? x.gmv_total ?? 0);
-    tot.vendas += x.vendas || 0;
-    tot.pedidos += x.pedidos || 0;
-    tot.pedidos_concluidos += x.pedidos_concluidos || 0;
-    tot.pedidos_pendentes += x.pedidos_pendentes || 0;
-    tot.pedidos_cancelados += x.pedidos_cancelados || 0;
-    tot.pedidos_nao_pagos += x.pedidos_nao_pagos || 0;
-    tot.comissao_nao_paga += x.comissao_nao_paga || 0;
-    tot.vendas_diretas += x.vendas_diretas || 0;
-    tot.vendas_indiretas += x.vendas_indiretas || 0;
+    tot.fat_bruto += (x.faturamento ?? x.gmv_total ?? x.fat_bruto ?? 0);
+    tot.vendas += x.qtd_itens ?? x.vendas ?? 0;
+    tot.pedidos += x.pedidos ?? 0;
+    tot.pedidos_concluidos += x.pedidos_concluidos ?? x.pedidos_completos ?? 0;
+    tot.pedidos_pendentes += x.pedidos_pendentes ?? 0;
+    tot.pedidos_cancelados += x.pedidos_cancelados ?? 0;
+    tot.pedidos_nao_pagos += x.pedidos_nao_pagos ?? 0;
+    tot.comissao_nao_paga += x.comissao_nao_paga ?? 0;
+    tot.vendas_diretas += x.vendas_diretas ?? 0;
+    tot.vendas_indiretas += x.vendas_indiretas ?? 0;
 
     const comConc = Number(x.comissao_concluida || 0);
     const comPend = Number(x.comissao_pendente || 0);
@@ -261,9 +261,9 @@ export async function getDashboardKPIsByPeriod(startDate, endDate, settings = {}
       comissaoConcluida: comConc,
       comissaoPendente: comPend,
       comissao: comDiaSplit,
-      faturamento: Number(x.faturamento ?? x.gmv_total ?? 0),
-      vendas: Number(x.vendas || 0),
-      pedidos: Number(x.pedidos || 0),
+      faturamento: Number(x.faturamento ?? x.gmv_total ?? x.fat_bruto ?? 0),
+      vendas: Number(x.qtd_itens ?? x.vendas ?? 0),
+      pedidos: Number(x.pedidos ?? 0),
     });
   });
   historicoDiario.sort((a, b) => a.data.localeCompare(b.data));
@@ -316,7 +316,7 @@ export async function getDashboardKPIsByPeriod(startDate, endDate, settings = {}
         const itemEnd = m.dataFim || itemStart;
         const ratio = calcOverlapRatio(startDate, endDate, itemStart, itemEnd);
         if (ratio <= 0) return;
-        gastoMeta += (Number(m.valorUsado) || 0) * ratio;
+        gastoMeta += (Number(m.valorUsado ?? m.gasto) || 0) * ratio;
       });
     }
 
@@ -630,8 +630,8 @@ function diaPassouThrottleLocal(dateStr, hojeStr) {
 
 function isDailyMetricsVazio(data) {
   const pedidos = Number(data?.pedidos || 0);
-  const vendas = Number(data?.vendas ?? data?.qtd_itens ?? 0);
-  const fat = Number(data?.faturamento ?? data?.gmv_total ?? 0);
+  const vendas = Number(data?.qtd_itens ?? data?.vendas ?? 0);
+  const fat = Number(data?.faturamento ?? data?.gmv_total ?? data?.fat_bruto ?? 0);
   const comissao = Number(
     data?.comissao_estimada ?? data?.comissao_concluida ?? data?.comissao_total ?? data?.comissao_real ?? 0,
   );
@@ -1208,7 +1208,7 @@ export async function getGastoMetaDiarioByPeriod(startDate, endDate) {
     const diasSet = new Set();
     snap.forEach((d) => {
       const x = d.data() || {};
-      gastoMeta += Number(x.valorUsado || 0);
+      gastoMeta += Number(x.valorUsado ?? x.gasto ?? 0);
       if (x.data) diasSet.add(x.data);
     });
 
@@ -1276,8 +1276,8 @@ async function lerTotaisShopeeDailyPeriodo(startDate, endDate) {
     if (isDailyMetricsVazio(x)) return;
     dias += 1;
     tot.comissao_estimada += Number(x.comissao_estimada ?? x.comissao_total ?? 0);
-    tot.fat_bruto += Number(x.faturamento ?? x.gmv_total ?? 0);
-    tot.vendas += Number(x.vendas ?? 0);
+    tot.fat_bruto += Number(x.faturamento ?? x.gmv_total ?? x.fat_bruto ?? 0);
+    tot.vendas += Number(x.qtd_itens ?? x.vendas ?? 0);
     tot.pedidos += Number(x.pedidos ?? 0);
   });
   if (dias === 0) return null;
@@ -1492,8 +1492,8 @@ function aplicarGastoMetaAoPorDia(porDia, metaSnap, startStr, endStr) {
     const data = m.data;
     if (!data || data < startStr || data > endStr) return;
     const subid = normalizeSubId(m.subid || m.nomeAnuncio || "");
-    const gasto = Number(m.valorUsado || 0);
-    const cliquesMeta = Number(m.cliquesTotal || 0);
+    const gasto = Number((m.valorUsado ?? m.gasto) || 0);
+    const cliquesMeta = Number((m.cliquesLink ?? m.cliques) || 0);
     if (!gasto && !cliquesMeta) return;
 
     if (!porDia[data]) {
@@ -1843,9 +1843,11 @@ async function enrichSubIdsComMetaNoPeriodo(subIds, startStr, endStr, settings =
       const m = docSnap.data() || {};
       const key = normalizeSubId(m.subid || m.nomeAnuncio || "");
       if (!key) return;
-      if (!metaBySubId[key]) metaBySubId[key] = { gasto: 0, cliques_anuncio: 0 };
-      metaBySubId[key].gasto += Number(m.valorUsado || 0);
-      metaBySubId[key].cliques_anuncio += Number(m.cliquesTotal || 0);
+        if (!metaBySubId[key]) {
+          metaBySubId[key] = { gasto: 0, cliques_anuncio: 0 };
+        }
+        metaBySubId[key].gasto += Number((m.valorUsado ?? m.gasto) || 0);
+        metaBySubId[key].cliques_anuncio += Number((m.cliquesLink ?? m.cliques) || 0);
     });
     metaSource = "meta_ads_daily";
   } else if (importIds.metaAds) {

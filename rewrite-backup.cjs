@@ -1,4 +1,6 @@
-import { supabase } from "../../../services/supabase/client";
+const fs = require('fs');
+
+const code = `import { supabase } from "../../../services/supabase/client";
 
 const LOOKUP_URL = import.meta.env.VITE_LOOKUP_URL;
 const REFRESH_URL = import.meta.env.VITE_REFRESH_URL;
@@ -16,11 +18,11 @@ export async function lookupProdutoShopee(url) {
   if (!LOOKUP_URL || !SECRET) throw new Error("Configuração ausente: VITE_LOOKUP_URL ou VITE_BACKFILL_SECRET");
   const ctrl = new AbortController(); const timeoutId = setTimeout(() => ctrl.abort(), 30000);
   try {
-    const response = await fetch(`${LOOKUP_URL}?url=${encodeURIComponent(url)}`, {
-      method: "POST", headers: { Authorization: `Bearer ${SECRET}`, "Content-Type": "application/json" },
+    const response = await fetch(\`\${LOOKUP_URL}?url=\${encodeURIComponent(url)}\`, {
+      method: "POST", headers: { Authorization: \`Bearer \${SECRET}\`, "Content-Type": "application/json" },
       body: "", signal: ctrl.signal,
     });
-    if (!response.ok) throw new Error(`Erro ${response.status}: ${await response.text()}`);
+    if (!response.ok) throw new Error(\`Erro \${response.status}: \${await response.text()}\`);
     return await response.json();
   } finally { clearTimeout(timeoutId); }
 }
@@ -28,7 +30,7 @@ export async function lookupProdutoShopee(url) {
 export async function salvarBackup(produto, opcoes = {}) {
   const { apelido = "", marcadoPrincipal = false } = opcoes;
   const itemId = String(produto.itemId);
-  const docId = `item_${itemId}`;
+  const docId = \`item_\${itemId}\`;
   const dados = {
     ...produto, apelido, marcadoPrincipal, status_api: "ok", alertas: [],
     cadastrado_em: new Date().toISOString(), ultima_verificacao: new Date().toISOString(),
@@ -91,22 +93,22 @@ export async function atualizarBackup(itemId) {
   if (!REFRESH_URL || !SECRET) throw new Error("Configuração ausente: VITE_REFRESH_URL");
   const ctrl = new AbortController(); const timeoutId = setTimeout(() => ctrl.abort(), 30000);
   try {
-    const response = await fetch(`${REFRESH_URL}?itemId=${encodeURIComponent(itemId)}`, {
-      method: "POST", headers: { Authorization: `Bearer ${SECRET}`, "Content-Type": "application/json" },
+    const response = await fetch(\`\${REFRESH_URL}?itemId=\${encodeURIComponent(itemId)}\`, {
+      method: "POST", headers: { Authorization: \`Bearer \${SECRET}\`, "Content-Type": "application/json" },
       body: "", signal: ctrl.signal,
     });
-    if (!response.ok) throw new Error(`Erro ${response.status}: ${await response.text()}`);
+    if (!response.ok) throw new Error(\`Erro \${response.status}: \${await response.text()}\`);
     return await response.json();
   } finally { clearTimeout(timeoutId); }
 }
 
 export async function removerBackup(itemId) {
-  await supabase.from("backup_produtos").delete().eq("id", `item_${itemId}`);
+  await supabase.from("backup_produtos").delete().eq("id", \`item_\${itemId}\`);
   invalidarCacheBackups();
 }
 
 export async function editarBackupMeta(itemId, updates) {
-  const docId = `item_${itemId}`;
+  const docId = \`item_\${itemId}\`;
   const { data: d } = await supabase.from("backup_produtos").select("data_blob").eq("id", docId).single();
   if (!d) return;
   const data = d.data_blob || {};
@@ -153,10 +155,10 @@ export async function atualizarGrupoBackup(grupoId) {
   if (GROUP_REFRESH_URL && SECRET) {
     const ctrl = new AbortController(); const timeoutId = setTimeout(() => ctrl.abort(), 600000);
     try {
-      const response = await fetch(`${GROUP_REFRESH_URL}?grupoId=${encodeURIComponent(grupoId)}`, {
-        method: "POST", headers: { Authorization: `Bearer ${SECRET}`, "Content-Type": "application/json" }, body: "", signal: ctrl.signal,
+      const response = await fetch(\`\${GROUP_REFRESH_URL}?grupoId=\${encodeURIComponent(grupoId)}\`, {
+        method: "POST", headers: { Authorization: \`Bearer \${SECRET}\`, "Content-Type": "application/json" }, body: "", signal: ctrl.signal,
       });
-      if (!response.ok) throw new Error(`Erro ${response.status}: ${await response.text()}`);
+      if (!response.ok) throw new Error(\`Erro \${response.status}: \${await response.text()}\`);
       return await response.json();
     } finally { clearTimeout(timeoutId); }
   }
@@ -182,8 +184,8 @@ export async function buscarSimilaresShopApi(shopId, excluirItemId = null) {
   if (!SIMILARES_URL || !SECRET) return [];
   const ctrl = new AbortController(); const timeoutId = setTimeout(() => ctrl.abort(), 30000);
   try {
-    const response = await fetch(`${SIMILARES_URL}?shopId=${encodeURIComponent(shopId)}`, {
-      method: "POST", headers: { Authorization: `Bearer ${SECRET}`, "Content-Type": "application/json" }, body: "", signal: ctrl.signal,
+    const response = await fetch(\`\${SIMILARES_URL}?shopId=\${encodeURIComponent(shopId)}\`, {
+      method: "POST", headers: { Authorization: \`Bearer \${SECRET}\`, "Content-Type": "application/json" }, body: "", signal: ctrl.signal,
     });
     if (!response.ok) return [];
     const data = await response.json();
@@ -220,7 +222,7 @@ export async function criarGrupo(nome, principalItemId) {
     data_blob: grupoData, criado_em: grupoData.criado_em
   });
   
-  const produtoId = `item_${principalItemId}`;
+  const produtoId = \`item_\${principalItemId}\`;
   const { data: d } = await supabase.from("backup_produtos").select("data_blob").eq("id", produtoId).single();
   if (d) {
     d.data_blob.grupoId = docId;
@@ -245,11 +247,11 @@ export async function listarGrupos(opcoes = {}) {
 
 export async function adicionarBackupAoGrupo(grupoId, itemId) {
   if (!grupoId || !itemId) throw new Error("grupoId e itemId obrigatórios");
-  const produtoId = `item_${itemId}`;
+  const produtoId = \`item_\${itemId}\`;
   const { data: pData } = await supabase.from("backup_produtos").select("data_blob").eq("id", produtoId).single();
   if (!pData) throw new Error("Produto não está cadastrado em backups. Cadastre primeiro.");
   const produtoData = pData.data_blob || {};
-  if (produtoData.grupoId && produtoData.grupoId !== grupoId) throw new Error(`Produto já está no grupo ${produtoData.grupoId}. Remova de lá primeiro.`);
+  if (produtoData.grupoId && produtoData.grupoId !== grupoId) throw new Error(\`Produto já está no grupo \${produtoData.grupoId}. Remova de lá primeiro.\`);
 
   const { data: gData } = await supabase.from("backup_grupos").select("data_blob").eq("id", grupoId).single();
   if (gData) {
@@ -279,7 +281,7 @@ export async function removerBackupDoGrupo(grupoId, itemId) {
     grupo.atualizado_em = new Date().toISOString();
     await supabase.from("backup_grupos").update({ data_blob: grupo }).eq("id", grupoId);
   }
-  const produtoId = `item_${itemId}`;
+  const produtoId = \`item_\${itemId}\`;
   const { data: pData } = await supabase.from("backup_produtos").select("data_blob").eq("id", produtoId).single();
   if (pData) {
     pData.data_blob.grupoId = null;
@@ -319,10 +321,10 @@ export async function removerGrupo(grupoId) {
   
   for (const itemId of todosIds) {
     if (itemId) {
-      const { data: pData } = await supabase.from("backup_produtos").select("data_blob").eq("id", `item_${itemId}`).single();
+      const { data: pData } = await supabase.from("backup_produtos").select("data_blob").eq("id", \`item_\${itemId}\`).single();
       if (pData) {
         pData.data_blob.grupoId = null;
-        await supabase.from("backup_produtos").update({ data_blob: pData.data_blob }).eq("id", `item_${itemId}`);
+        await supabase.from("backup_produtos").update({ data_blob: pData.data_blob }).eq("id", \`item_\${itemId}\`);
       }
     }
   }
@@ -331,7 +333,7 @@ export async function removerGrupo(grupoId) {
 }
 
 async function fetchBackupProdutosMap(itemIds = []) {
-  const docIds = [...new Set((itemIds || []).map(id => String(id || "").trim()).filter(Boolean).map(id => (id.startsWith("item_") ? id : `item_${id}`)))];
+  const docIds = [...new Set((itemIds || []).map(id => String(id || "").trim()).filter(Boolean).map(id => (id.startsWith("item_") ? id : \`item_\${id}\`)))];
   const map = {};
   if (!docIds.length) return map;
   for (let i = 0; i < docIds.length; i += 30) {
@@ -379,3 +381,6 @@ export async function carregarGrupoComProdutos(grupoId) {
   const [grupo] = await carregarGruposComProdutos([grupoMeta]);
   return grupo;
 }
+\`;
+
+fs.writeFileSync('C:\\\\Users\\\\PC\\\\Music\\\\Afiliadoteste-Superbase\\\\src\\\\platforms\\\\shopee\\\\repositories\\\\backupRepository.js', code);

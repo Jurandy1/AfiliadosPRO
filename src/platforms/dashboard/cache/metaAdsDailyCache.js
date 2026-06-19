@@ -10,8 +10,7 @@
  *   - In-flight dedup: 2 chamadas paralelas com mesmo range → 1 fetch só.
  *   - Warn em DEV quando range > 7 dias for chamado (rastreio do "635 docs bug").
  */
-import { collection, query, where, getDocs } from "firebase/firestore";
-import { db } from "../../../services/firebase/client";
+import { supabase } from "../../../services/supabase/client";
 import {
   fetchSmartDailyCollection,
   invalidateDailyVersionsManifestCache,
@@ -128,13 +127,18 @@ export async function fetchMetaAdsDailySnapshot(startDate, endDate) {
       const dataArray = await fetchSmartDailyCollection("meta_ads_daily", startDate, endDate);
       result = arrayToSnapLike(dataArray);
     } else {
-      const q = query(
-        collection(db, "meta_ads_daily"),
-        where("data", ">=", startDate),
-        where("data", "<=", endDate),
-      );
-      const snap = await getDocs(q).catch(() => EMPTY_SNAP);
-      result = (!snap || snap.empty) ? EMPTY_SNAP : snap;
+      const { data, error } = await supabase
+        .from("meta_ads_daily")
+        .select("*")
+        .gte("data", startDate)
+        .lte("data", endDate);
+
+      if (error) {
+        console.warn("[Supabase] Erro ao buscar meta_ads_daily:", error.message);
+        result = EMPTY_SNAP;
+      } else {
+        result = arrayToSnapLike(data || []);
+      }
     }
     lruTouch(key, result);
     return result;

@@ -1,19 +1,14 @@
-import {
-  collection, doc, documentId, getDoc, getDocs, deleteDoc, setDoc, serverTimestamp, query, where,
-} from "firebase/firestore";
-import { db } from "../../../services/firebase/client";
-import { COLLECTIONS } from "../../../services/firebase/firestore";
+import { supabase } from "../../../services/supabase/client";
+import { dedupeAdIds } from "../../../utils/adLinkIds";
 import {
   cadastroGet,
   cadastroSet,
   getProdutosFullScanCache,
   invalidateProdutosCache,
 } from "./produtosCache";
-import { dedupeAdIds } from "../../../utils/adLinkIds";
 
 export { invalidateProdutosCache };
 
-/** Busca cadastro só dos IDs necessários (30 por query) — evita scan de 20k+ docs. */
 export async function getProdutosByItemIds(itemIds = []) {
   const docIds = [...new Set(
     (itemIds || [])
@@ -37,15 +32,20 @@ export async function getProdutosByItemIds(itemIds = []) {
   const fetched = [];
   for (let i = 0; i < missing.length; i += 30) {
     const chunk = missing.slice(i, i + 30);
-    const snap = await getDocs(query(
-      collection(db, COLLECTIONS.PRODUTOS),
-      where(documentId(), "in", chunk),
-    )).catch(() => ({ docs: [] }));
-    const foundIds = new Set(snap.docs.map((d) => d.id));
-    snap.docs.forEach((d) => {
-      const data = d.data();
-      cadastroSet(d.id, data);
-      fetched.push({ id: d.id, ...data });
+    const { data: snap, error } = await supabase
+      .from("produtos")
+      .select("*")
+      .in("doc_id", chunk);
+
+    if (error) {
+      console.warn("[produtos] Erro getProdutosByItemIds:", error);
+      continue;
+    }
+
+    const foundIds = new Set((snap || []).map((d) => d.doc_id));
+    (snap || []).forEach((d) => {
+      cadastroSet(d.doc_id, d);
+      fetched.push({ id: d.doc_id, ...d });
     });
     for (const docId of chunk) {
       if (!foundIds.has(docId)) {
@@ -60,78 +60,65 @@ export async function getProdutos(importacaoId = null) {
   if (!importacaoId) {
     return getProdutosFullScanCache() || [];
   }
-  const base = collection(db, COLLECTIONS.PRODUTOS);
-  const q = query(base, where("importacaoId", "==", importacaoId));
-  const snap = await getDocs(q);
-  if (snap.empty) {
-    return [];
-  }
-  return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+  const { data: snap, error } = await supabase
+    .from("produtos")
+    .select("*")
+    .eq("importacao_id", importacaoId);
+
+  if (error || !snap) return [];
+  return snap.map((d) => ({ id: d.doc_id, ...d }));
 }
 
 export async function deleteProduto(id) {
-  await deleteDoc(doc(db, COLLECTIONS.PRODUTOS, id));
+  await supabase.from("produtos").delete().eq("doc_id", id);
   invalidateProdutosCache();
 }
 
 export async function getCliques(importacaoId = null) {
-  const base = collection(db, COLLECTIONS.CLIQUES);
-  const q = importacaoId ? query(base, where("importacaoId", "==", importacaoId)) : base;
-  const snap = await getDocs(q);
-  if (importacaoId && snap.empty) {
-    const fallback = await getDocs(base);
-    return fallback.docs.map((d) => ({ id: d.id, ...d.data() }));
-  }
-  return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+  return [];
 }
 
 export async function getSubIdVendas() {
-  try {
-    const snap = await getDocs(collection(db, COLLECTIONS.SUBID_VENDAS));
-    return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-  } catch (error) {
-    console.warn("[subid_vendas] Leitura falhou:", error?.code, error?.message);
-    throw error;
-  }
+  return [];
 }
 
 export async function saveProductLink(produtoId, link_afiliado) {
-  await setDoc(
-    doc(db, COLLECTIONS.PRODUTOS, produtoId),
-    { link_afiliado: (link_afiliado || "").trim(), updatedAt: serverTimestamp() },
-    { merge: true },
-  );
+  await supabase
+    .from("produtos")
+    .update({
+      link_afiliado: (link_afiliado || "").trim(),
+      updated_at: new Date().toISOString(),
+    })
+    .eq("doc_id", produtoId);
   invalidateProdutosCache();
-}
-
-async function loadAdSpendIndex(collectionName, adIds = []) {
-  const index = {};
-  const unique = dedupeAdIds(adIds);
-  await Promise.all(unique.map(async (id) => {
-    const snap = await getDoc(doc(db, collectionName, id)).catch(() => null);
-    if (snap?.exists()) index[id] = snap.data();
-  }));
-  return index;
 }
 
 export async function saveAdLink(produtoId, { metaAdIds = [], pinterestAdIds = [] }) {
   const metaUnique = dedupeAdIds(metaAdIds);
   const pinUnique = dedupeAdIds(pinterestAdIds);
 
-  const [metaIndex, pinIndex] = await Promise.all([
-    loadAdSpendIndex(COLLECTIONS.META_ADS, metaUnique),
-    loadAdSpendIndex(COLLECTIONS.PINTEREST, pinUnique),
-  ]);
+  let investimentoMeta = 0;
+  if (metaUnique.length > 0) {
+    const { data: mData } = await supabase.from("meta_ads").select("data_blob").in("ad_id", metaUnique);
+    (mData || []).forEach(d => { investimentoMeta += (d.data_blob?.valorUsado || 0); });
+  }
 
-  const investimentoMeta = metaUnique.reduce((sum, id) => sum + (metaIndex[id]?.valorUsado || 0), 0);
-  const investimentoPin  = pinUnique.reduce((sum, id) => sum + (pinIndex[id]?.spend || 0), 0);
-  const investimento     = Math.round((investimentoMeta + investimentoPin) * 100) / 100;
+  let investimentoPin = 0;
+  if (pinUnique.length > 0) {
+    const { data: pData } = await supabase.from("pinterest_ads").select("data_blob").in("ad_id", pinUnique);
+    (pData || []).forEach(d => { investimentoPin += (d.data_blob?.spend || 0); });
+  }
 
-  await setDoc(
-    doc(db, COLLECTIONS.PRODUTOS, produtoId),
-    { metaAdIds: metaUnique, pinterestAdIds: pinUnique, investimento, updatedAt: serverTimestamp() },
-    { merge: true },
-  );
+  const investimento = Math.round((investimentoMeta + investimentoPin) * 100) / 100;
+
+  await supabase
+    .from("produtos")
+    .update({
+      canais: { metaAdIds: metaUnique, pinterestAdIds: pinUnique, investimento },
+      updated_at: new Date().toISOString(),
+    })
+    .eq("doc_id", produtoId);
+
   invalidateProdutosCache();
 
   return { investimento, metaAdIds: metaUnique, pinterestAdIds: pinUnique };

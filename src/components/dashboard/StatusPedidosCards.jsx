@@ -140,9 +140,6 @@ export default function StatusPedidosCards({ kpis, perdas }) {
 
   return (
     <div>
-      <div className="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-3">
-        Conversão — status PromosApp
-      </div>
       <div className={`grid grid-cols-1 sm:grid-cols-2 ${gridCols} gap-4`}>
         {cards.map((c) => (
           <StatusCard

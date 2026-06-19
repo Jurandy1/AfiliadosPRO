@@ -1,5 +1,6 @@
 import { collection, deleteDoc, doc, getDocs, orderBy, query, serverTimestamp, writeBatch, where } from "firebase/firestore";
 import { db } from "../../../services/firebase/client";
+import { supabase } from "../../../services/supabase/client";
 import { COLLECTIONS } from "../../../services/firebase/firestore";
 import { parseCSVBuffer } from "../../../shared/parsers/csvParser";
 import { parseMetaAdsRows, readMetaAdsWorkbook } from "../../meta/parsers/metaAdsParser";
@@ -397,12 +398,15 @@ export async function importShopeeClique(arrayBufferOrBuffers, options = {}) {
 
   if (mode === "replace") {
     await deleteCollectionDocs(COLLECTIONS.CLIQUE_DAILY);
+    await supabase.from("clique_daily").delete().neq("data", "0"); // limpa todos
   }
 
   let existingDaily = {};
   if (mode === "append") {
     const dailySnap = await getDocs(collection(db, COLLECTIONS.CLIQUE_DAILY));
     dailySnap.docs.forEach((d) => { existingDaily[d.id] = Number(d.data()?.cliques || 0); });
+    const { data: supRows } = await supabase.from("clique_daily").select("data, subid, cliques");
+    (supRows || []).forEach(r => { existingDaily[`${r.data}__${r.subid}`] = Number(r.cliques || 0); });
   }
 
   let batch = writeBatch(db);
@@ -415,24 +419,43 @@ export async function importShopeeClique(arrayBufferOrBuffers, options = {}) {
     }
   };
 
+  const supabaseRows = [];
+
   for (const [dayKey, cliques] of Object.entries(byDateSub || {})) {
     const sep = dayKey.indexOf("__");
     if (sep < 0) continue;
     const data = dayKey.slice(0, sep);
     const sub_id_norm = dayKey.slice(sep + 2);
     if (!data || !sub_id_norm) continue;
+    
+    const finalCliques = (existingDaily[dayKey] || 0) + cliques;
+    
     const ref = doc(collection(db, COLLECTIONS.CLIQUE_DAILY), dayKey);
     batch.set(ref, {
       data,
       subid: sub_id_norm,
       sub_id_norm,
-      cliques: (existingDaily[dayKey] || 0) + cliques,
+      cliques: finalCliques,
       fonte: mode === "append" ? "shopee_clique_append" : "shopee_clique_csv",
       updatedAt: serverTimestamp(),
       importacaoId: importRef.id,
     }, mode === "append" ? { merge: true } : undefined);
     batchCount++;
     await commitBatchIfNeeded();
+    
+    supabaseRows.push({
+      data,
+      subid: sub_id_norm,
+      item_id: "0",
+      cliques: finalCliques,
+      cliques_unicos: 0,
+      ultima_sync: new Date().toISOString()
+    });
+  }
+
+  // batch upsert to supabase
+  for (let i = 0; i < supabaseRows.length; i += 1000) {
+    await supabase.from("clique_daily").upsert(supabaseRows.slice(i, i + 1000));
   }
 
   if (mode === "append") {

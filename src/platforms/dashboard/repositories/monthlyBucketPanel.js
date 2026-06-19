@@ -412,12 +412,7 @@ export function buildSubIdBundleFromBucketsRaw(subidByMonth, painelByMonth, star
  * Carrega painel_resumo + subid_mensal para o intervalo. Null se faltar bucket.
  */
 export async function loadMonthlyBucketData(startDate, endDate) {
-  const startStr = toISODateStr(startDate);
-  const endStr = toISODateStr(endDate);
-  const monthKeys = listMonthKeysInRange(startStr, endStr);
-  if (!monthKeys.length) return null;
-  const { versionKey } = await fetchDataVersions().catch(() => ({ versionKey: "0" }));
-  const docs = await fetchMonthlyDocs(monthKeys, versionKey);
-  if (!docs) return null;
-  return { ...docs, startStr, endStr, monthKeys };
+  // O cache mensal foi desativado porque o Supabase/Postgres calcula os agregados
+  // em tempo real a partir do shopee_daily muito rapidamente.
+  return null;
 }

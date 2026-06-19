@@ -14,26 +14,24 @@ import {
   buildPinBySubForPeriod,
   buildPinBySubLifetime,
 } from "./adsPeriodSpend";
+import { fetchCliqueDailyForRange } from "../cache/dailyRangeCache";
 
 const CADASTRO_SKIP_IDS = new Set(["", "_cauda_longa", "desconhecido"]);
 
-/** Índice `${data}__${subid}` → cliques (Tier 2). */
+/** Índice `${data}__${subid}` é cliques (Tier 2). */
 export async function fetchCliqueDailyIndex(startDate, endDate) {
   if (!startDate || !endDate) return {};
-  const snap = await getDocs(query(
-    collection(db, COLLECTIONS.CLIQUE_DAILY),
-    where("data", ">=", startDate),
-    where("data", "<=", endDate),
-  )).catch(() => ({ empty: true, forEach: () => {} }));
-
+  
+  const rows = await fetchCliqueDailyForRange(startDate, endDate).catch(() => []);
   const index = {};
-  snap.forEach((d) => {
-    const x = d.data() || {};
+  
+  rows.forEach((x) => {
     const sid = normalizeSubId(x.subid || x.sub_id_norm || "");
     const data = x.data;
     if (!sid || !data) return;
     index[`${data}__${sid}`] = (index[`${data}__${sid}`] || 0) + Number(x.cliques || 0);
   });
+  
   return index;
 }
 

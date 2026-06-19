@@ -672,6 +672,15 @@ export default function DashboardPage() {
     }
   }, [dailySortField]);
 
+  const handleSubSort = useCallback((field) => {
+    if (subSortField === field) {
+      setSubSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    } else {
+      setSubSortField(field);
+      setSubSortDir("desc");
+    }
+  }, [subSortField]);
+
   const subIdDailyTotals = useMemo(() => {
     const totals = subIdDailyFiltered.reduce((acc, r) => {
       acc.comissoes += subIdComissaoExibida(r);
@@ -753,27 +762,42 @@ export default function DashboardPage() {
   }, [subIdsFilteredSorted]);
 
   const renderSubIdRow = useCallback((r) => {
-    const roiColor = r.roi >= settings.roiMinimo ? "#16A34A" : r.roi >= 0 ? "#D97706" : "#DC2626";
-    const lucroColor = (r.lucro || 0) >= 0 ? "#16A34A" : "#DC2626";
+    const isSelected = subIdsSelecionados.includes(r.subid || r.id);
+    const toggleSelection = () => {
+      const sid = r.subid || r.id;
+      if (isSelected) setSubIdsSelecionados((prev) => prev.filter(x => x !== sid));
+      else setSubIdsSelecionados((prev) => [...prev, sid]);
+    };
+    const roiColor = r.roi >= settings.roiMinimo ? "#22c55e" : r.roi >= 0 ? "#eab308" : "#ef4444";
+    const lucroColor = (r.lucro || 0) >= 0 ? "#22c55e" : "#ef4444";
+    
     return (
-      <tr key={r.id || r.subid} className="hover:bg-slate-50/70 transition-colors border-b border-slate-100">
-        <td className="px-3 py-2.5 font-medium text-slate-900">{r.subid || "—"}</td>
-        {subCols.comissoes && <td className="px-2 py-2.5 text-center text-emerald-700 font-semibold">{fmt(subIdComissaoExibida(r))}</td>}
-        {subCols.gasto && <td className="px-2 py-2.5 text-center text-slate-700">{fmt(r.gasto)}</td>}
+      <tr key={r.id || r.subid} className={`transition-colors border-b border-slate-800 ${isSelected ? "bg-slate-800/80" : "bg-slate-900 hover:bg-slate-800/50"} text-slate-300`}>
+        <td className="px-3 py-2.5 font-medium text-slate-100 flex items-center gap-2">
+          <input 
+            type="checkbox" 
+            checked={isSelected} 
+            onChange={toggleSelection} 
+            className="rounded border-slate-600 bg-slate-800 text-indigo-500 focus:ring-indigo-500 cursor-pointer"
+          />
+          <span className="truncate">{r.subid || "—"}</span>
+        </td>
+        {subCols.comissoes && <td className="px-2 py-2.5 text-center text-emerald-400 font-semibold">{fmt(subIdComissaoExibida(r))}</td>}
+        {subCols.gasto && <td className="px-2 py-2.5 text-center text-slate-400">{fmt(r.gasto)}</td>}
         {subCols.lucro && <td className="px-2 py-2.5 text-center font-semibold" style={{ color: lucroColor }}>{fmt(r.lucro)}</td>}
         {subCols.roi && <td className="px-2 py-2 text-center font-bold" style={{ color: roiColor }}>{r.gasto > 0 ? ((r.roi || 0) * 100).toFixed(2) + "%" : "—"}</td>}
-        {subCols.faturamento && <td className="px-2 py-2 text-center">{fmt(r.faturamento)}</td>}
+        {subCols.faturamento && <td className="px-2 py-2 text-center text-emerald-400">{fmt(r.faturamento)}</td>}
         {subCols.ticket && <td className="px-2 py-2 text-center">{r.ticket_medio > 0 ? fmt(r.ticket_medio) : "—"}</td>}
-        {subCols.total_vendas && <td className="px-2 py-2 text-center">{fmtNum(r.total_vendas)}</td>}
-        {subCols.vendas_diretas && <td className="px-2 py-2 text-center">{fmtNum(r.vendas_diretas)}</td>}
-        {subCols.vendas_indiretas && <td className="px-2 py-2 text-center">{fmtNum(r.vendas_indiretas)}</td>}
-        {subCols.qtd_itens && <td className="px-2 py-2 text-center">{fmtNum(r.qtd_itens)}</td>}
+        {subCols.total_vendas && <td className="px-2 py-2 text-center text-emerald-400">{fmtNum(r.total_vendas)}</td>}
+        {subCols.vendas_diretas && <td className="px-2 py-2 text-center text-emerald-400">{fmtNum(r.vendas_diretas)}</td>}
+        {subCols.vendas_indiretas && <td className="px-2 py-2 text-center text-emerald-400">{fmtNum(r.vendas_indiretas)}</td>}
+        {subCols.qtd_itens && <td className="px-2 py-2 text-center text-emerald-400">{fmtNum(r.qtd_itens)}</td>}
         {subCols.cliques_anuncio && <td className="px-2 py-2 text-center">{fmtNum(r.cliques_anuncio)}</td>}
         {subCols.cliques_shopee && <td className="px-2 py-2 text-center">{fmtNum(r.cliques_shopee)}</td>}
         {subCols.batimento && <td className="px-2 py-2 text-center">{r.cliques_anuncio > 0 ? ((r.batimento || 0) * 100).toFixed(2) + "%" : "—"}</td>}
       </tr>
     );
-  }, [subCols, settings.roiMinimo]);
+  }, [subCols, settings.roiMinimo, subIdsSelecionados]);
 
   const kpisDosSelecionados = useMemo(() => {
     if (subIdsSelecionados.length === 0) return null;
@@ -969,14 +993,16 @@ export default function DashboardPage() {
 
         {/* Bloco principal — estilo referência Campanhas Inteligentes */}
         <section className="space-y-4">
-          <PerformanceHeroFinanceiro kpis={kpis} />
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <PerformanceHeroFinanceiro kpis={kpis} />
+            <PerformanceHeroVolume
+              kpis={kpisVolume || kpis}
+              subIdsComVenda={subIdsComVenda}
+              metaMensal={settings.metaMensal}
+              showMetaMensal={periodoFiltro === "mes_atual"}
+            />
+          </div>
           <StatusPedidosCards kpis={kpis} perdas={data?.perdas} />
-          <PerformanceHeroVolume
-            kpis={kpisVolume || kpis}
-            subIdsComVenda={subIdsComVenda}
-            metaMensal={settings.metaMensal}
-            showMetaMensal={periodoFiltro === "mes_atual"}
-          />
           <DashboardChartsPanel
             chartData={chartData}
             startDate={rangeAtivo?.startDate}
@@ -1105,31 +1131,6 @@ export default function DashboardPage() {
       {subIds && subIds.length > 0 && (subIdDiagnostics?.isReliable || periodoFiltro !== "all") && (
         <div className="surface-card overflow-hidden">
           <div className="px-4 py-3 border-b border-gray-100">
-            {subIds && subIds.length > 0 && todosSubIdsDisponiveis.length > 0 && (
-              isMobile ? (
-                <SubIdFilterSheet
-                  isMobile
-                  open={subFilterOpen}
-                  onOpenChange={setSubFilterOpen}
-                  subIdsSelecionados={subIdsSelecionados}
-                  setSubIdsSelecionados={setSubIdsSelecionados}
-                  todosSubIdsDisponiveis={todosSubIdsDisponiveis}
-                  subIdFiltroBusca={subIdFiltroBusca}
-                  setSubIdFiltroBusca={setSubIdFiltroBusca}
-                  subIdsParaCheckbox={subIdsParaCheckbox}
-                />
-              ) : (
-                <SubIdDesktopFilter
-                  subIdsSelecionados={subIdsSelecionados}
-                  setSubIdsSelecionados={setSubIdsSelecionados}
-                  todosSubIdsDisponiveis={todosSubIdsDisponiveis}
-                  subIdFiltroBusca={subIdFiltroBusca}
-                  setSubIdFiltroBusca={setSubIdFiltroBusca}
-                  subIdsParaCheckbox={subIdsParaCheckbox}
-                />
-              )
-            )}
-
             {kpisDosSelecionados && (
               <div className="mb-4 bg-gradient-to-r from-indigo-50 to-purple-50 rounded-lg border border-indigo-200 p-4">
                 <div className="flex items-center justify-between mb-3">
@@ -1211,6 +1212,9 @@ export default function DashboardPage() {
                   setOnlyLoss={setOnlyLoss}
                   onlyProfit={onlyProfit}
                   setOnlyProfit={setOnlyProfit}
+                  subIdsSelecionados={subIdsSelecionados}
+                  setSubIdsSelecionados={setSubIdsSelecionados}
+                  subIdsFilteredSorted={subIdsFilteredSorted}
                 />
               </>
             )}
@@ -1245,6 +1249,9 @@ export default function DashboardPage() {
               subCols={subCols}
               totals={subIdTableTotals}
               renderSubIdRow={renderSubIdRow}
+              sortField={subSortField}
+              sortDir={subSortDir}
+              onSort={handleSubSort}
             />
           )}
           {metaGastoResumo && periodoFiltro !== "all" && (

@@ -21,8 +21,25 @@ export default function SubIdDesktopToolbar({
   setOnlyLoss,
   onlyProfit,
   setOnlyProfit,
+  subIdsSelecionados,
+  setSubIdsSelecionados,
+  subIdsFilteredSorted,
 }) {
   const count = subIdVisibleColCount(subCols);
+
+  const handleToggleAll = () => {
+    const idsAtuais = subIdsFilteredSorted.map(r => r.subid || r.id).filter(Boolean);
+    const estaoTodosMarcados = idsAtuais.every(id => subIdsSelecionados.includes(id)) && idsAtuais.length > 0;
+    
+    if (estaoTodosMarcados) {
+      setSubIdsSelecionados(prev => prev.filter(id => !idsAtuais.includes(id)));
+    } else {
+      const novos = new Set([...subIdsSelecionados, ...idsAtuais]);
+      setSubIdsSelecionados([...novos]);
+    }
+  };
+
+  const handleClear = () => setSubIdsSelecionados([]);
 
   return (
     <div className="text-xs mb-1">
@@ -33,6 +50,22 @@ export default function SubIdDesktopToolbar({
           placeholder="Pesquisar SubID..."
           className="border border-gray-200 rounded px-2 py-1 bg-white min-w-[160px] flex-1 max-w-xs"
         />
+        <button
+          type="button"
+          onClick={handleToggleAll}
+          className="border border-indigo-200 text-indigo-700 rounded px-2 py-1 bg-indigo-50 hover:bg-indigo-100 shrink-0 font-medium"
+        >
+          Marcar exibidos
+        </button>
+        {subIdsSelecionados?.length > 0 && (
+          <button
+            type="button"
+            onClick={handleClear}
+            className="border border-red-200 text-red-700 rounded px-2 py-1 bg-red-50 hover:bg-red-100 shrink-0"
+          >
+            Limpar ({subIdsSelecionados.length})
+          </button>
+        )}
         <button
           type="button"
           onClick={() => setSubColsOpen((v) => !v)}

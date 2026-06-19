@@ -12,16 +12,7 @@
  * Para invalidar (ex.: após backfill manual), chame
  * invalidateDailyRangeCache() ou invalidateDailyRangeCache("subid_daily").
  */
-import {
-  collection,
-  doc,
-  documentId,
-  getDoc,
-  getDocs,
-  query,
-  where,
-} from "firebase/firestore";
-import { db } from "../../../services/firebase/client";
+import { supabase } from "../../../services/supabase/client";
 
 const TTL_MS = 60_000;
 const MAX_SLOTS = 6;
@@ -74,15 +65,22 @@ export function invalidateDailyRangeCache(collectionName = null) {
  * Retorna array de objetos `{ id, ...data }`. NÃO retorna snapshot do Firestore.
  */
 async function fetchByDataField(collectionName, startDate, endDate) {
-  const q = query(
-    collection(db, collectionName),
-    where("data", ">=", startDate),
-    where("data", "<=", endDate),
-  );
-  const snap = await getDocs(q).catch(() => ({ forEach: () => {} }));
-  const out = [];
-  snap.forEach((d) => out.push({ id: d.id, ...d.data() }));
-  return out;
+  // Nota: subid_daily e clique_daily ainda não estão no Supabase, então retornarão array vazio
+  // se consultados até que o backfill dessas tabelas seja feito.
+  const { data, error } = await supabase
+    .from(collectionName)
+    .select("*")
+    .gte("data", startDate)
+    .lte("data", endDate);
+    
+  if (error) {
+    console.warn(`[Supabase] Erro ao buscar ${collectionName}:`, error.message);
+    return [];
+  }
+  
+  // O código legado espera objetos que possivelmente têm 'id', e no Firebase o id era o documentId (ou a própria data).
+  // No Supabase, se não vier um 'id', adicionamos um campo 'id' pra não quebrar a lógica.
+  return (data || []).map((row) => ({ id: row.data || row.id, ...row }));
 }
 
 /**
@@ -134,24 +132,25 @@ export async function fetchShopeeDailyForRange(startDate, endDate, isDailyMetric
   if (!startDate || !endDate) return [];
   const key = `${startDate}|${endDate}`;
   return cachedFetch("shopee_daily", key, async () => {
-    const out = [];
-    if (startDate === endDate) {
-      const snapDoc = await getDoc(doc(db, "shopee_daily", startDate));
-      if (snapDoc.exists()) {
-        const data = snapDoc.data();
-        if (!isDailyMetricsVazio || !isDailyMetricsVazio(data)) {
-          out.push({ id: snapDoc.id, ...data });
-        }
-      }
-    } else {
-      const q = query(
-        collection(db, "shopee_daily"),
-        where(documentId(), ">=", startDate),
-        where(documentId(), "<=", endDate),
-      );
-      const snap = await getDocs(q).catch(() => ({ forEach: () => {} }));
-      snap.forEach((d) => out.push({ id: d.id, ...d.data() }));
+    const { data, error } = await supabase
+      .from("shopee_daily")
+      .select("*")
+      .gte("data", startDate)
+      .lte("data", endDate);
+
+    if (error) {
+      console.warn("[Supabase] Erro ao buscar shopee_daily:", error.message);
+      return [];
     }
+
+    const out = [];
+    (data || []).forEach((row) => {
+      // isDailyMetricsVazio é opcional, garantindo que não retorne linhas vazias
+      if (!isDailyMetricsVazio || !isDailyMetricsVazio(row)) {
+        out.push({ id: row.data || row.id, ...row });
+      }
+    });
+
     return out;
   });
 }

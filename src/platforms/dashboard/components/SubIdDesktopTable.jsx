@@ -22,7 +22,30 @@ function SubIdTableColGroup({ subCols }) {
   return <colgroup>{cols}</colgroup>;
 }
 
-export default function SubIdDesktopTable({ rows, subCols, totals, renderSubIdRow }) {
+export default function SubIdDesktopTable({ rows, subCols, totals, renderSubIdRow, sortField, sortDir, onSort }) {
+  const ThSort = ({ field, label, align = "center", title, subtitle, sortable = true }) => {
+    const isSorted = sortField === field;
+    return (
+      <th 
+        className={`px-2 py-2.5 text-${align} leading-tight ${sortable ? 'cursor-pointer hover:bg-slate-800' : ''} transition-colors select-none group`}
+        onClick={() => sortable && onSort && onSort(field)}
+        title={title}
+      >
+        <div className={`flex flex-col items-${align === 'left' ? 'start' : 'center'} justify-center`}>
+          <div className="flex items-center gap-1">
+            <span>{label}</span>
+            {sortable && (
+              <span className={`text-[10px] ${isSorted ? "text-indigo-400" : "text-slate-600 group-hover:text-slate-400 opacity-50"}`}>
+                {isSorted ? (sortDir === "asc" ? "▲" : "▼") : "↕"}
+              </span>
+            )}
+          </div>
+          {subtitle && <div className="text-[9px] font-normal normal-case text-slate-400 tracking-normal mt-0.5">{subtitle}</div>}
+        </div>
+      </th>
+    );
+  };
+
   const footerRow = (
     <tr key="__total__" className="bg-slate-900 text-white font-extrabold text-[12px]">
       <td className="px-4 py-3">TOTAL</td>
@@ -59,44 +82,41 @@ export default function SubIdDesktopTable({ rows, subCols, totals, renderSubIdRo
       <table className={SUBID_TABLE_CLASS} style={{ minWidth: subIdTableMinWidth(subCols) }}>
         <SubIdTableColGroup subCols={subCols} />
         <thead>
-          <tr className="table-head-row">
-            <th className="text-left px-3 py-2.5">SubID</th>
-            {subCols.comissoes && <th className="px-2 py-2.5 text-center">Comissão</th>}
-            {subCols.gasto && <th className="px-2 py-2.5 text-center">Gasto</th>}
-            {subCols.lucro && <th className="px-2 py-2.5 text-center">Lucro</th>}
-            {subCols.roi && <th className="px-2 py-2.5 text-center">ROI</th>}
-            {subCols.faturamento && <th className="px-2 py-2.5 text-center">Faturamento</th>}
-            {subCols.ticket && <th className="px-2 py-2.5 text-center">Ticket</th>}
-            {subCols.total_vendas && <th className="px-2 py-2.5 text-center">Vendas</th>}
-            {subCols.vendas_diretas && <th className="px-2 py-2.5 text-center">Diretas</th>}
-            {subCols.vendas_indiretas && <th className="px-2 py-2.5 text-center">Indiretas</th>}
-            {subCols.qtd_itens && <th className="px-2 py-2.5 text-center">Itens</th>}
+          <tr className="table-head-row bg-slate-950 text-slate-300 border-b border-slate-800">
+            <th className="text-left px-3 py-2.5 font-normal">SubID</th>
+            {subCols.comissoes && <ThSort field="comissoes" label="Comissão" />}
+            {subCols.gasto && <ThSort field="gasto" label="Gasto" />}
+            {subCols.lucro && <ThSort field="lucro" label="Lucro" />}
+            {subCols.roi && <ThSort field="roi" label="ROI" />}
+            {subCols.faturamento && <ThSort field="faturamento" label="Faturamento" />}
+            {subCols.ticket && <ThSort field="ticket_medio" label="Ticket" />}
+            {subCols.total_vendas && <ThSort field="total_vendas" label="Vendas" />}
+            {subCols.vendas_diretas && <ThSort field="vendas_diretas" label="Diretas" />}
+            {subCols.vendas_indiretas && <ThSort field="vendas_indiretas" label="Indiretas" />}
+            {subCols.qtd_itens && <ThSort field="qtd_itens" label="Itens" />}
             {subCols.cliques_anuncio && (
-              <th
-                className="px-2 py-2 text-center leading-tight"
+              <ThSort
+                field="cliques_anuncio"
+                label="Cliques Ads"
                 title="Cliques no link dos anúncios no período: Meta (meta_ads_daily) + Pinterest (pinClicks), atribuídos ao SubID."
-              >
-                <div>Cliques Ads</div>
-                <div className="text-[9px] font-normal normal-case text-slate-400 tracking-normal">Meta + Pinterest</div>
-              </th>
+                subtitle="Meta + Pinterest"
+              />
             )}
             {subCols.cliques_shopee && (
-              <th
-                className="px-2 py-2 text-center leading-tight"
+              <ThSort
+                field="cliques_shopee"
+                label="Cliques Shopee"
                 title="Cliques no link de afiliado registrados no relatório CSV da Shopee (importação shopee_clique → cliques_shopee), filtrados por SubID e período."
-              >
-                <div>Cliques Shopee</div>
-                <div className="text-[9px] font-normal normal-case text-slate-400 tracking-normal">CSV painel Shopee</div>
-              </th>
+                subtitle="CSV painel Shopee"
+              />
             )}
             {subCols.batimento && (
-              <th
-                className="px-2 py-2 text-center leading-tight"
+              <ThSort
+                field="batimento"
+                label="% Bat."
                 title="Batimento = Cliques Shopee ÷ Cliques Ads. Acima de 100% indica mais cliques na Shopee do que nos anúncios."
-              >
-                <div>% Bat.</div>
-                <div className="text-[9px] font-normal normal-case text-slate-400 tracking-normal">Shopee ÷ Ads</div>
-              </th>
+                subtitle="Shopee ÷ Ads"
+              />
             )}
           </tr>
         </thead>
