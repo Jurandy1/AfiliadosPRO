@@ -1,76 +1,49 @@
-import { collection, doc, getDocs, query, where, writeBatch } from "firebase/firestore";
-import { db } from "../../services/firebase/client";
-import { COLLECTIONS } from "../../services/firebase/firestore";
+import { supabase } from "../../services/supabase/client";
 import { normalizeSubId } from "../../utils/normalizeSubId";
-import { getImportacoes } from "../../platforms/imports/repositories/importacoesLogRepository";
 import { invalidateProdutosCache } from "../../platforms/shopee/repositories/productsRepository";
 import { invalidateAllPeriodCaches } from "../../platforms/dashboard/services/periodDataCache";
 
-function pickLatestImport(importacoes, tipo) {
-  return [...importacoes]
-    .filter((item) => item.tipo === tipo && item.modo !== "daily_only")
-    .sort((a, b) => (b?.importadoEm?.seconds || 0) - (a?.importadoEm?.seconds || 0))[0] || null;
-}
-
 export async function linkCliquesToProdutos() {
-  const importacoes = await getImportacoes().catch(() => []);
-  const latestVendaImport = pickLatestImport(importacoes, "shopee_venda");
-  const latestCliqueImport = pickLatestImport(importacoes, "shopee_clique");
-
-  const [cliquesSnap, prodSnap] = await Promise.all([
-    latestCliqueImport?.modo === "append"
-      ? getDocs(collection(db, COLLECTIONS.CLIQUES))
-      : latestCliqueImport?.id
-      ? getDocs(query(collection(db, COLLECTIONS.CLIQUES), where("importacaoId", "==", latestCliqueImport.id)))
-      : getDocs(collection(db, COLLECTIONS.CLIQUES)),
-    latestVendaImport?.modo === "append"
-      ? getDocs(collection(db, COLLECTIONS.PRODUTOS))
-      : latestVendaImport?.id
-      ? getDocs(query(collection(db, COLLECTIONS.PRODUTOS), where("importacaoId", "==", latestVendaImport.id)))
-      : getDocs(collection(db, COLLECTIONS.PRODUTOS)),
+  const [{ data: cliquesSnap }, { data: prodSnap }] = await Promise.all([
+    supabase.from("cliques_shopee").select("id, data_blob"),
+    supabase.from("produtos").select("id, data_blob")
   ]);
 
   const cliquesIndex = {};
-  cliquesSnap.docs.forEach((d) => {
-    const data = d.data();
+  (cliquesSnap || []).forEach((d) => {
+    const data = d.data_blob || {};
     const norm = data.sub_id_norm || normalizeSubId(data.sub_id || "");
     if (norm) cliquesIndex[norm] = (cliquesIndex[norm] || 0) + (data.cliques || 0);
   });
 
-  let batch = writeBatch(db);
-  let updated = 0;
-  let batchCount = 0;
-
-  for (const docSnap of prodSnap.docs) {
-    const prod = docSnap.data();
+  const updates = [];
+  
+  (prodSnap || []).forEach((docSnap) => {
+    const prod = docSnap.data_blob || {};
     const sub_ids = prod.sub_ids || (prod.sub_id ? [prod.sub_id] : []);
-    if (!sub_ids.length) continue;
+    if (!sub_ids.length) return;
 
     const cliquesTotal = sub_ids.reduce(
       (sum, sid) => sum + (cliquesIndex[normalizeSubId(sid)] || 0),
       0,
     );
-    batch.set(docSnap.ref, { cliques: cliquesTotal }, { merge: true });
-    updated++;
-    batchCount++;
-
-    if (batchCount >= 400) {
-      await batch.commit();
-      batch = writeBatch(db);
-      batchCount = 0;
+    
+    if (prod.cliques !== cliquesTotal) {
+      prod.cliques = cliquesTotal;
+      updates.push({ id: docSnap.id, data_blob: prod, updated_at: new Date().toISOString() });
     }
+  });
+
+  for (let i = 0; i < updates.length; i += 1000) {
+    await supabase.from("produtos").upsert(updates.slice(i, i + 1000));
   }
 
-  if (batchCount > 0) {
-    await batch.commit();
-  }
-
-  if (updated > 0) {
+  if (updates.length > 0) {
     invalidateProdutosCache();
     invalidateAllPeriodCaches();
   }
   return {
-    produtosAtualizados: updated,
+    produtosAtualizados: updates.length,
     subIdsIndexados: Object.keys(cliquesIndex).length,
   };
 }

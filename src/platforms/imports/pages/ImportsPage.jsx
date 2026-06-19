@@ -12,7 +12,6 @@ import {
 import Badge from "../../../components/cards/Badge";
 import ReconcileAdsButton from "../components/ReconcileAdsButton";
 import ReconcileButton from "../components/ReconcileButton";
-import { uploadImportFile } from "../../../services/firebase/storage";
 import { formatFirestoreDate } from "../../../utils/dates";
 import {
   formatImportPeriodo,

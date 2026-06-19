@@ -11,11 +11,8 @@
  *   - Se a versão do IDB divergir da versão do manifesto, o dia é
  *     considerado stale e vai ao Firestore antes de servir os dados.
  */
-import { doc, getDoc, documentId } from "firebase/firestore";
-import { collection, query, where, getDocs } from "firebase/firestore";
-import { db } from "../../../services/firebase/client";
+import { supabase } from "../../../services/supabase/client";
 import { idbGet, idbSet } from "./indexedDbCache";
-import { trackCacheHit } from "../../../services/firebase/readTracker";
 
 // TTL do manifesto em memória: 30s — curto o suficiente para detectar
 // um sync recente sem gerar leitura a cada operação.
@@ -33,8 +30,8 @@ export async function getDailyVersionsManifest(force = false) {
   if (!force && _manifestCache && (agora - _manifestCacheTs < MANIFEST_TTL_MS)) {
     return _manifestCache;
   }
-  const snap = await getDoc(doc(db, "sync_state", "daily_versions")).catch(() => null);
-  _manifestCache = snap?.exists() ? snap.data() : {};
+  const { data: snap } = await supabase.from("sync_state").select("data_blob").eq("key", "daily_versions").single();
+  _manifestCache = snap ? snap.data_blob : {};
   _manifestCacheTs = agora;
   return _manifestCache;
 }
@@ -111,31 +108,24 @@ export async function fetchSmartDailyCollection(colName, startStr, endStr) {
     }
   }
 
-  // Fase 2: buscar no Firestore apenas os dias que faltam/estão stale
+  // Fase 2: buscar no Supabase apenas os dias que faltam/estão stale
   if (missingDates.length > 0) {
     missingDates.sort();
     const minDate = missingDates[0];
     const maxDate = missingDates[missingDates.length - 1];
 
-    // shopee_daily usa documentId() como data; as demais têm campo "data"
-    const isShopeeDaily = colName === "shopee_daily";
-    const q = query(
-      collection(db, colName),
-      where(isShopeeDaily ? documentId() : "data", ">=", minDate),
-      where(isShopeeDaily ? documentId() : "data", "<=", maxDate),
-    );
+    let q = supabase.from(colName).select("*");
+    q = q.gte("data", minDate).lte("data", maxDate);
 
-    const snap = await getDocs(q).catch(() => ({ empty: true, forEach: () => {} }));
+    const { data: snap } = await q;
 
     // Agrupa docs por data
     const fetchedByDate = {};
-    snap.forEach((d) => {
-      const data = d.data();
-      const dt = data.data || d.id;
+    (snap || []).forEach((d) => {
+      const dt = d.data;
       if (dt) {
-        if (!data.data) data.data = dt;
         if (!fetchedByDate[dt]) fetchedByDate[dt] = [];
-        fetchedByDate[dt].push(data);
+        fetchedByDate[dt].push(d);
       }
     });
 

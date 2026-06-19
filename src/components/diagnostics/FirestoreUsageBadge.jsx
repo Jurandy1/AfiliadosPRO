@@ -1,11 +1,10 @@
 import { useEffect, useState } from "react";
 import { Activity, Database } from "lucide-react";
-import { subscribeReadTracker } from "../../services/firebase/readTracker";
 
 export default function FirestoreUsageBadge({ onOpenSettings }) {
   const [stats, setStats] = useState(null);
 
-  useEffect(() => subscribeReadTracker(setStats), []);
+  useEffect(() => {}, []);
 
   if (!stats?.enabled) return null;
 

@@ -1,6 +1,4 @@
-import { collection, getDocs, limit, query, where } from "firebase/firestore";
-import { db } from "../../../services/firebase/client";
-import { COLLECTIONS } from "../../../services/firebase/firestore";
+import { supabase } from "../../../services/supabase/client";
 import { listarBackups } from "./backupRepository";
 
 function taxaCancelamento(p) {
@@ -48,53 +46,33 @@ function estimarPrejuizoItem(item) {
 }
 
 function scoreRisco(item) {
-  const m = item.metricas || {};
-  const nivelBonus = item.nivel === "critico" ? 1_000_000 : 100_000;
-  const fraudBonus =
-    item.fraudStatus === "FRAUD" ? 5_000_000 : item.fraudStatus === "UNVERIFIED" ? 2_000_000 : 0;
-  const cancelados = Number(m.cancelados || 0);
-  const taxa = Number(m.taxa || 0);
-  const pendentes = Number(m.pendentes || 0);
-  const comissaoPerdida = Number(m.comissaoPerdida || 0);
-  const categoriaBonus =
-    {
-      fraud_risk: 500_000,
-      principal: 50_000,
-      cancelamento: 30_000,
-      backup: 10_000,
-      pendente: 5_000,
-      comissao_perdida: 3_000,
-    }[item.categoria] || 0;
-  const multiplosRiscosBonus = item.categorias?.length > 1 ? 80_000 : 0;
-
-  return (
-    nivelBonus +
-    fraudBonus +
-    categoriaBonus +
-    multiplosRiscosBonus +
-    cancelados * 10_000 +
-    taxa * 50_000 +
-    pendentes * 200 +
-    comissaoPerdida
-  );
+  let s = 0;
+  if (item.nivel === "critico") s += 1000;
+  const fraud = String(item.fraudStatus || "").toUpperCase();
+  if (fraud === "FRAUD") s += 500;
+  if (fraud === "UNVERIFIED") s += 200;
+  s += Number(item.metricas?.taxa || 0) * 100;
+  s += Number(item.metricas?.comissaoPerdida || 0) * 2;
+  s += Number(item.metricas?.cancelados || 0) * 10;
+  s += Number(item.metricas?.pendentes || 0);
+  return s;
 }
 
-const RISCO_QUERY_LIMIT = 100;
+const RISCO_QUERY_LIMIT = 300;
 
-async function fetchProdutosComIndicadoresRisco() {
-  const base = collection(db, COLLECTIONS.PRODUTOS);
-  const [cancelSnap, pendSnap, perdaSnap, fraudSnap, unverifiedSnap] = await Promise.all([
-    getDocs(query(base, where("pedidos_cancelados", ">=", 2), limit(RISCO_QUERY_LIMIT))).catch(() => ({ docs: [] })),
-    getDocs(query(base, where("pedidos_pendentes", ">=", 8), limit(RISCO_QUERY_LIMIT))).catch(() => ({ docs: [] })),
-    getDocs(query(base, where("comissao_cancelada", ">=", 20), limit(RISCO_QUERY_LIMIT))).catch(() => ({ docs: [] })),
-    getDocs(query(base, where("fraud_status", "==", "FRAUD"), limit(RISCO_QUERY_LIMIT))).catch(() => ({ docs: [] })),
-    getDocs(query(base, where("fraud_status", "==", "UNVERIFIED"), limit(RISCO_QUERY_LIMIT))).catch(() => ({ docs: [] })),
-  ]);
-
+export async function fetchProdutosComIndicadoresRisco() {
   const map = new Map();
+
+  // Queries no Supabase, pegando itens problemáticos
+  const { data: cancelSnap } = await supabase.from("produtos").select("id, data_blob").gte("data_blob->>pedidos_cancelados", "2").limit(RISCO_QUERY_LIMIT);
+  const { data: pendSnap } = await supabase.from("produtos").select("id, data_blob").gte("data_blob->>pedidos_pendentes", "8").limit(RISCO_QUERY_LIMIT);
+  const { data: perdaSnap } = await supabase.from("produtos").select("id, data_blob").gte("data_blob->>comissao_cancelada", "20").limit(RISCO_QUERY_LIMIT);
+  const { data: fraudSnap } = await supabase.from("produtos").select("id, data_blob").eq("data_blob->>fraud_status", "FRAUD").limit(RISCO_QUERY_LIMIT);
+  const { data: unverifiedSnap } = await supabase.from("produtos").select("id, data_blob").eq("data_blob->>fraud_status", "UNVERIFIED").limit(RISCO_QUERY_LIMIT);
+
   for (const snap of [cancelSnap, pendSnap, perdaSnap, fraudSnap, unverifiedSnap]) {
-    snap.docs.forEach((d) => {
-      map.set(d.id, { id: d.id, ...d.data() });
+    (snap || []).forEach((d) => {
+      map.set(d.id, { id: d.id, ...(d.data_blob || {}) });
     });
   }
   return [...map.values()];
@@ -257,7 +235,7 @@ export async function getCentralRisco() {
         nivel: taxa >= 0.35 ? "critico" : "aviso",
         categoria: "cancelamento",
         titulo: nome,
-        mensagem: `${canc} pedido(s) cancelado(s) · taxa ${(taxa * 100).toFixed(0)}%`,
+        mensagem: `${canc} pedido(s) cancelado(s) à taxa ${(taxa * 100).toFixed(0)}%`,
         itemId: id,
         loja: p.loja,
         link: p.link_shopee || "",

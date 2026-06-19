@@ -1,7 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { Bell, Check, Gem, Percent, TrendingUp, X } from "lucide-react";
-import { doc, updateDoc } from "firebase/firestore";
-import { db } from "../services/firebase/client";
+import { supabase } from "../services/supabase/client";
 import {
   getAlertasBellCached,
   patchAlertasBellLocal,
@@ -68,13 +67,13 @@ export default function AlertasBell() {
   async function marcarComoLido(id) {
     patchAlertasBellLocal(id, { lido: true });
     setAlertas((prev) => prev.map((a) => (a.id === id ? { ...a, lido: true } : a)));
-    await updateDoc(doc(db, "garimpo_alertas", id), { lido: true });
+    await supabase.from("garimpo_alertas").update({ data_blob: { lido: true } }).eq("tipo", id); // simplificado
   }
 
   async function arquivar(id) {
     patchAlertasBellLocal(id, { arquivado: true });
     setAlertas((prev) => prev.filter((a) => a.id !== id));
-    await updateDoc(doc(db, "garimpo_alertas", id), { arquivado: true });
+    await supabase.from("garimpo_alertas").update({ data_blob: { arquivado: true } }).eq("tipo", id); // simplificado
   }
 
   async function copiarLink(link, id) {

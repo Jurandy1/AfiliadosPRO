@@ -1,12 +1,9 @@
 /**
- * Meta Ads — leitura Firestore (sync via Cloud Functions).
+ * Meta Ads - leitura do Supabase.
  */
 
-import { collection, getDocs, limit, orderBy, query, where } from "firebase/firestore";
-import { db } from "../../../services/firebase/client";
+import { supabase } from "../../../services/supabase/client";
 import { idbGet, idbSet } from "../../dashboard/cache/indexedDbCache";
-import { trackCacheHit } from "../../../services/firebase/readTracker";
-import { COLLECTIONS } from "../../../services/firebase/firestore";
 
 const metaAdsCache = new Map();
 const IDB_PREFIX = "metaAds:";
@@ -24,14 +21,21 @@ export async function getMetaAds(importacaoId = null) {
   const idbEntry = await idbGet(idbKey);
   if (idbEntry && Date.now() - idbEntry.ts < CACHE_TTL_MS) {
     metaAdsCache.set(cacheKey, idbEntry);
-    trackCacheHit({ collection: "meta_ads", docs: idbEntry.data.length, source: "metaRepository.js" });
     return idbEntry.data;
   }
 
-  const base = collection(db, COLLECTIONS.META_ADS);
-  const q = importacaoId ? query(base, where("importacaoId", "==", importacaoId)) : base;
-  const snap = await getDocs(q);
-  const result = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+  let query = supabase.from("meta_ads").select("id, data_blob");
+  if (importacaoId) {
+    query = query.eq("data_blob->>importacaoId", importacaoId);
+  }
+  
+  const { data: snap, error } = await query;
+  if (error) {
+    console.warn("Erro lendo meta_ads:", error);
+    return [];
+  }
+  
+  const result = (snap || []).map((d) => ({ id: d.id, ...(d.data_blob || {}) }));
   
   const entry = { data: result, ts: Date.now() };
   metaAdsCache.set(cacheKey, entry);
@@ -42,12 +46,16 @@ export async function getMetaAds(importacaoId = null) {
 
 export function clearMetaAdsCache() {
   metaAdsCache.clear();
-  // Letting TTL or forced clear handle IDB
 }
 
 export async function getMetaDemographics() {
-  const base = collection(db, COLLECTIONS.META_DEMOGRAPHICS);
-  const snap = await getDocs(query(base, orderBy("importadoEm", "desc"), limit(1)));
-  const docSnap = snap.docs[0];
-  return docSnap ? { id: docSnap.id, ...docSnap.data() } : null;
+  const { data: snap, error } = await supabase
+    .from("meta_demographics")
+    .select("id, data_blob")
+    .order("data_blob->>importadoEm", { ascending: false })
+    .limit(1);
+    
+  if (error || !snap || snap.length === 0) return null;
+  const docSnap = snap[0];
+  return { id: docSnap.id, ...(docSnap.data_blob || {}) };
 }

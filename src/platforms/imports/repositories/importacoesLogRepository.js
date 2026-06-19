@@ -1,16 +1,4 @@
-import {
-  collection,
-  doc,
-  getDoc,
-  getDocs,
-  limit,
-  orderBy,
-  query,
-  serverTimestamp,
-  setDoc,
-} from "firebase/firestore";
-import { db } from "../../../services/firebase/client";
-import { COLLECTIONS } from "../../../services/firebase/firestore";
+import { supabase } from "../../../services/supabase/client";
 
 const IMPORTACOES_LIMIT = 120;
 const LATEST_IMPORTS_DOC = "importacoes_latest";
@@ -29,7 +17,11 @@ let sessionCacheTs = 0;
 export function pickLatestImport(importacoes, tipo) {
   return [...(importacoes || [])]
     .filter((item) => item.tipo === tipo)
-    .sort((a, b) => (b?.importadoEm?.seconds || 0) - (a?.importadoEm?.seconds || 0))[0] || null;
+    .sort((a, b) => {
+      const tsA = new Date(a.importadoEm || 0).getTime();
+      const tsB = new Date(b.importadoEm || 0).getTime();
+      return tsB - tsA;
+    })[0] || null;
 }
 
 /** Atualiza ponteiro de última importação por tipo (1 write). */
@@ -37,17 +29,23 @@ export async function touchImportacoesLatest(tipo, importId) {
   const field = TIPO_TO_FIELD[tipo];
   if (!field || !importId) return;
   try {
-    await setDoc(doc(db, "sync_state", LATEST_IMPORTS_DOC), {
-      [field]: importId,
-      updatedAt: serverTimestamp(),
-    }, { merge: true });
+    const { data: snap } = await supabase.from("sync_state").select("data_blob").eq("id", LATEST_IMPORTS_DOC).single();
+    const data = snap?.data_blob || {};
+    data[field] = importId;
+    data.updatedAt = new Date().toISOString();
+    
+    await supabase.from("sync_state").upsert({
+      id: LATEST_IMPORTS_DOC,
+      data_blob: data,
+      updated_at: data.updatedAt
+    });
     sessionCache = null;
   } catch (err) {
     console.warn("[touchImportacoesLatest]", err?.message || err);
   }
 }
 
-/** IDs das últimas importações — 1 read em sync_state/importacoes_latest. */
+/** IDs das últimas importações - 1 read em sync_state/importacoes_latest. */
 export async function getLatestImportIds() {
   const now = Date.now();
   if (sessionCache && now - sessionCacheTs < SESSION_CACHE_TTL_MS) {
@@ -55,9 +53,9 @@ export async function getLatestImportIds() {
   }
 
   try {
-    const snap = await getDoc(doc(db, "sync_state", LATEST_IMPORTS_DOC));
-    if (snap.exists()) {
-      const d = snap.data() || {};
+    const { data: snap } = await supabase.from("sync_state").select("data_blob").eq("id", LATEST_IMPORTS_DOC).single();
+    if (snap) {
+      const d = snap.data_blob || {};
       sessionCache = {
         metaAds: d.metaAds || null,
         pinterest: d.pinterest || null,
@@ -82,20 +80,21 @@ export async function getLatestImportIds() {
   return sessionCache;
 }
 
-/** Leitura leve do log de importações — sem dependência de xlsx/parsers. */
+/** Leitura leve do log de importações - sem dependência de xlsx/parsers. */
 export async function getImportacoes(maxDocs = IMPORTACOES_LIMIT) {
   const cap = Math.max(1, Number(maxDocs) || IMPORTACOES_LIMIT);
   try {
-    const snap = await getDocs(
-      query(
-        collection(db, COLLECTIONS.IMPORTACOES),
-        orderBy("importadoEm", "desc"),
-        limit(cap),
-      ),
-    );
-    return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-  } catch {
-    const snap = await getDocs(query(collection(db, COLLECTIONS.IMPORTACOES), limit(cap)));
-    return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+    const { data: snap, error } = await supabase
+      .from("importacoes")
+      .select("id, data_blob")
+      .order("data_blob->>importadoEm", { ascending: false })
+      .limit(cap);
+
+    if (error) throw error;
+
+    return (snap || []).map((d) => ({ id: d.id, ...(d.data_blob || {}) }));
+  } catch (err) {
+    console.warn("Erro ao buscar importações:", err);
+    return [];
   }
 }

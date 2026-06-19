@@ -1,14 +1,18 @@
 /**
- * Pinterest Ads — leitura Firestore (importação manual via CSV).
+ * Pinterest Ads - leitura do Supabase.
  */
 
-import { collection, getDocs, query, where } from "firebase/firestore";
-import { db } from "../../../services/firebase/client";
-import { COLLECTIONS } from "../../../services/firebase/firestore";
+import { supabase } from "../../../services/supabase/client";
 
 export async function getPinterest(importacaoId = null) {
-  const base = collection(db, COLLECTIONS.PINTEREST);
-  const q = importacaoId ? query(base, where("importacaoId", "==", importacaoId)) : base;
-  const snap = await getDocs(q);
-  return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+  let query = supabase.from("pinterest_ads").select("id, data_blob");
+  if (importacaoId) {
+    query = query.eq("data_blob->>importacaoId", importacaoId);
+  }
+  const { data: snap, error } = await query;
+  if (error) {
+    console.warn("Erro lendo pinterest_ads:", error);
+    return [];
+  }
+  return (snap || []).map((d) => ({ id: d.id, ...(d.data_blob || {}) }));
 }

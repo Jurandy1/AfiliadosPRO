@@ -1,5 +1,4 @@
-import { doc, getDoc } from "firebase/firestore";
-import { db } from "../../../services/firebase/client";
+
 import { fetchDataVersions } from "../cache/dataVersions";
 import { finalizarKpisComissaoDashboard } from "../../../domain/metrics/financeiroMetrics.js";
 import { normalizeSubId } from "../../../utils/normalizeSubId";

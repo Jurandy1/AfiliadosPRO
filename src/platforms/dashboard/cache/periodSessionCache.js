@@ -1,5 +1,4 @@
 import { idbGet, idbSet, idbClear } from "./indexedDbCache";
-import { trackCacheHit } from "../../../services/firebase/readTracker";
 
 export const CACHE_DISABLE_KEY = "afilia:disable-cache";
 
@@ -37,12 +36,7 @@ export async function getPeriodCacheEntry(key) {
   if (!entry) return null;
   
   const kind = key.split("|")[0] || "desconhecido";
-  trackCacheHit({
-    collection: `cache_${kind}`,
-    docs: 1,
-    source: "periodSessionCache.js",
-  });
-  
+    
   return entry.payload;
 }
 

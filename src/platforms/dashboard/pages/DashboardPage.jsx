@@ -751,6 +751,7 @@ export default function DashboardPage() {
       total_vendas: 0, vendas_diretas: 0, vendas_indiretas: 0,
       qtd_itens: 0, cliques_anuncio: 0, cliques_shopee: 0,
     });
+    
     const fin = calcSubIdFinanceiroMetrics(totals.comissoes, totals.gasto);
     return {
       ...totals,

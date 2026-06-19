@@ -1,5 +1,4 @@
-import { doc, getDoc } from "firebase/firestore";
-import { db } from "../../../services/firebase/client";
+import { supabase } from "../../../services/supabase/client";
 
 const VERSIONS_TTL_MS = 30_000;
 
@@ -36,12 +35,14 @@ export async function fetchDataVersions({ force = false } = {}) {
   _inFlightPromise = (async () => {
     try {
       const [shopeeSnap, metaSnap] = await Promise.all([
-        getDoc(doc(db, "sync_state", "shopee_health")).catch(() => null),
-        getDoc(doc(db, "sync_state", "meta_health")).catch(() => null),
+        supabase.from("sync_state").select("data_blob").eq("key", "shopee_health").single().then(r => r.error ? { error: r.error } : r),
+        supabase.from("sync_state").select("data_blob").eq("key", "meta_health").single().then(r => r.error ? { error: r.error } : r),
       ]);
 
-      const shopeeVer = Number(shopeeSnap?.exists?.() ? shopeeSnap.data()?.dataVersion : 0) || 0;
-      const meta = metaSnap?.exists?.() ? (metaSnap.data() || {}) : {};
+      const shopeeData = shopeeSnap?.data?.data_blob || {};
+      const shopeeVer = Number(shopeeData.dataVersion || 0);
+      
+      const meta = metaSnap?.data?.data_blob || {};
       const metaVer = Math.max(
         timestampToMs(meta.lastDailySyncAt),
         timestampToMs(meta.lastAdsSyncAt),

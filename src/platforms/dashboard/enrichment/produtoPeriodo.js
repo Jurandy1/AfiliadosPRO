@@ -1,6 +1,4 @@
-import { collection, getDocs, query, where } from "firebase/firestore";
-import { db } from "../../../services/firebase/client";
-import { COLLECTIONS } from "../../../services/firebase/firestore";
+
 import { calcMetrics } from "../../../domain/metrics/productMetrics";
 import { dedupeAdIds } from "../../../utils/adLinkIds";
 import { normalizeSubId } from "../../../utils/normalizeSubId";

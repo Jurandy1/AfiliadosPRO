@@ -2,12 +2,7 @@ import React from 'react'
 import ReactDOM from 'react-dom/client'
 import App from './App.jsx'
 import './index.css'
-import { initFirestoreTracker, exposeReadTrackerGlobally } from './services/firebase/readTracker.js'
-import { startFirestoreUsageSync } from './services/firebase/firestoreUsageSync.js'
 
-exposeReadTrackerGlobally();
-initFirestoreTracker();
-startFirestoreUsageSync();
 
 function renderFatal(error) {
   const err = error?.reason || error?.error || error;

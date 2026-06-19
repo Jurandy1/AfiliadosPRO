@@ -1,5 +1,4 @@
-import { doc, getDoc } from "firebase/firestore";
-import { db } from "../../../services/firebase/client";
+import { supabase } from "../../../services/supabase/client";
 
 /** Fallback local — fonte canônica preferida: Firestore config/shopee_oficial */
 export const SHOPEE_OFICIAL_PERIOD_REF_STATIC = {
@@ -74,18 +73,18 @@ let cachedPeriods = null;
 export async function loadShopeeOficialPeriodRef() {
   if (cachedPeriods) return cachedPeriods;
   try {
-    const snap = await getDoc(doc(db, "config", "shopee_oficial"));
-    if (snap.exists()) {
-      const periods = snap.data()?.periods;
+    const { data: snap } = await supabase.from("sync_state").select("data_blob").eq("id", "shopee_oficial").single();
+    if (snap) {
+      const periods = snap.data_blob?.periods;
       if (periods && typeof periods === "object" && Object.keys(periods).length) {
         cachedPeriods = periods;
         return cachedPeriods;
       }
     }
-  } catch {
-    /* usa fallback */
+  } catch (err) {
+    console.warn("[ShopeeOficial] Fallback para constante estática (Supabase lido com erro).", err?.message);
   }
-  cachedPeriods = { ...SHOPEE_OFICIAL_PERIOD_REF_STATIC };
+  cachedPeriods = SHOPEE_OFICIAL_PERIOD_REF_STATIC;
   return cachedPeriods;
 }
 
@@ -191,11 +190,22 @@ export function alinharDailyBreakdownAoAlvo(rows, target, recalcRow = null) {
     ) : undefined,
   }));
 
-  scaleRows(list, "comissoes_estimadas", target.comissao, ["comissoes"]);
-  scaleRows(list, "faturamento", target.gmv);
-  scaleRowsInt(list, "total_vendas", target.itens);
-  if (target.pedidos > 0) scaleRowsInt(list, "pedidos", target.pedidos);
-  fixCentavos(list, "comissoes_estimadas", target.comissao);
+  if (Number(target.comissao) > 0) {
+    scaleRows(list, "comissoes_estimadas", target.comissao, ["comissoes"]);
+  }
+  if (Number(target.gmv) > 0) {
+    scaleRows(list, "faturamento", target.gmv);
+  }
+  if (Number(target.itens) > 0) {
+    scaleRowsInt(list, "total_vendas", target.itens);
+  }
+  if (Number(target.pedidos) > 0) {
+    scaleRowsInt(list, "pedidos", target.pedidos);
+  }
+  
+  if (Number(target.comissao) > 0) {
+    fixCentavos(list, "comissoes_estimadas", target.comissao);
+  }
 
   for (const r of list) {
     if (!r._bySubId) continue;
@@ -226,33 +236,54 @@ export function alinharAgregadosAoPainelOficial(rows, target, kind = "subid") {
   const list = rows.map((r) => ({ ...r }));
 
   if (kind === "subid") {
-    scaleRows(list, "comissoes_estimadas", target.comissao, ["comissoes"]);
-    scaleRows(list, "faturamento", target.gmv);
-    scaleRowsInt(list, "qtd_itens", target.itens, ["total_vendas"]);
-    scaleRowsInt(list, "pedidos", target.pedidos);
+    if (Number(target.comissao) > 0) {
+      scaleRows(list, "comissoes_estimadas", target.comissao, ["comissoes"]);
+    }
+    if (Number(target.gmv) > 0) {
+      scaleRows(list, "faturamento", target.gmv);
+    }
+    if (Number(target.itens) > 0) {
+      scaleRowsInt(list, "qtd_itens", target.itens, ["total_vendas"]);
+    }
+    if (Number(target.pedidos) > 0) {
+      scaleRowsInt(list, "pedidos", target.pedidos);
+    }
     redistribuirVendasDiretasIndiretas(list);
-    fixCentavos(list, "comissoes_estimadas", target.comissao);
+    
+    if (Number(target.comissao) > 0) {
+      fixCentavos(list, "comissoes_estimadas", target.comissao);
+    }
     return list.map((r) => {
       const ticket = (r.total_vendas || r.qtd_itens) > 0 ? r.faturamento / (r.total_vendas || r.qtd_itens) : 0;
       return { ...r, ticket_medio: ticket, _alinhadoPainelShopee: true };
     });
   }
 
-  scaleRows(list, "comissao_estimada", target.comissao, ["comissoes"]);
-  scaleRows(list, "faturamento", target.gmv);
-  scaleRowsInt(list, "qtd_itens", target.itens);
+  if (Number(target.comissao) > 0) {
+    scaleRows(list, "comissao_estimada", target.comissao, ["comissoes"]);
+  }
+  if (Number(target.gmv) > 0) {
+    scaleRows(list, "faturamento", target.gmv);
+  }
+  if (Number(target.itens) > 0) {
+    scaleRowsInt(list, "qtd_itens", target.itens);
+  }
+  
   const sumConc = list.reduce((s, r) => s + Number(r.comissoes_concluidas || 0), 0);
   const sumPend = list.reduce((s, r) => s + Number(r.comissoes_pendentes || 0), 0);
   const splitTot = sumConc + sumPend;
-  if (splitTot > 0) {
+  if (splitTot > 0 && Number(target.comissao) > 0) {
     const k = target.comissao / splitTot;
     for (const r of list) {
       r.comissoes_concluidas = roundMoney((r.comissoes_concluidas || 0) * k);
       r.comissoes_pendentes = roundMoney((r.comissoes_pendentes || 0) * k);
     }
+  }
+  
+  if (Number(target.comissao) > 0) {
     fixCentavos(list, "comissao_estimada", target.comissao);
   }
-  fixCentavos(list, "comissao_estimada", target.comissao);
+  
   return list.map((r) => ({ ...r, _alinhadoPainelShopee: true }));
 }
 

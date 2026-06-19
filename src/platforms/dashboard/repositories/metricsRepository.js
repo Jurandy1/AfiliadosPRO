@@ -1,19 +1,5 @@
-import {
-  collection,
-  count,
-  doc,
-  documentId,
-  getAggregateFromServer,
-  getCountFromServer,
-  getDoc,
-  getDocs,
-  limit,
-  orderBy,
-  query,
-  startAfter,
-  sum,
-  where,
-} from "firebase/firestore";
+import { supabase } from "../../../services/supabase/client";
+const documentId = () => "id";
 import { fetchMetaAdsDailySnapshot, invalidateMetaAdsDailyCache } from "../cache/metaAdsDailyCache";
 import { fetchDataVersions, invalidateDataVersionsCache } from "../cache/dataVersions.js";
 import {
@@ -22,7 +8,6 @@ import {
   fetchCliqueDailyForRange,
   invalidateDailyRangeCache,
 } from "../cache/dailyRangeCache.js";
-import { db } from "../../../services/firebase/client";
 import {
   applySubIdFinanceiroRow,
   calcSubIdFinanceiroMetrics,
@@ -161,14 +146,11 @@ function enrichProduto(p) {
 }
 
 export async function getProdutosPagina(pageSize = 50, lastDoc = null) {
-  const produtosRef = collection(db, "produtos");
-  const order = orderBy("comissao_total", "desc");
-  const q = lastDoc
-    ? query(produtosRef, order, startAfter(lastDoc), limit(pageSize))
-    : query(produtosRef, order, limit(pageSize));
+  let q = supabase.from("produtos").select("*").limit(pageSize);
 
-  const snap = await getDocs(q);
-  const produtos = snap.docs.map((d) => enrichProduto({ id: d.id, ...d.data() }));
+  const { data: snapDocs } = await q;
+  const snap = { docs: (snapDocs || []).map(d => ({ id: d.doc_id || d.data || d.key, data: () => d })) };
+  const produtos = snap.docs.map((d) => enrichProduto({ id: d.doc_id || d.data || d.key, ...d.data() }));
 
   return {
     produtos,
@@ -649,18 +631,14 @@ export function aguardarMetricasComListener(dateStr, { maxWaitMs = 90000, interv
   return new Promise((resolve) => {
     const tick = async () => {
       try {
-        const snap = await getDoc(doc(db, "shopee_daily", dateStr));
-        if (snap.exists() && !isDailyMetricsVazio(snap.data())) {
+        const { data: snapRow } = await supabase.from("shopee_daily").select("*").eq("data", dateStr).single();
+        if (snapRow && !isDailyMetricsVazio(snapRow)) {
           resolve(true);
           return;
         }
         if (Date.now() - started > 20000) {
-          const subSnap = await getDocs(query(
-            collection(db, "subid_daily"),
-            where("data", "==", dateStr),
-            limit(3),
-          ));
-          if (subSnap.docs.some((d) => !isDailyMetricsVazio(d.data()))) {
+          const { data: subData } = await supabase.from("subid_daily").select("*").eq("data", dateStr).limit(3);
+          if ((subData || []).some((d) => !isDailyMetricsVazio(d))) {
             resolve(true);
             return;
           }
@@ -703,15 +681,15 @@ export async function getDatasDesatualizadas(startDate, endDate) {
   if (dates.length === 0) return stale;
 
   try {
-    const q = query(
-      collection(db, "shopee_daily"),
-      where(documentId(), ">=", dates[0]),
-      where(documentId(), "<=", dates[dates.length - 1])
-    );
-    const snap = await getDocs(q);
+    const { data: snapDocs } = await supabase
+      .from("shopee_daily")
+      .select("*")
+      .gte("data", dates[0])
+      .lte("data", dates[dates.length - 1]);
+
     const map = {};
-    snap.forEach((d) => {
-      map[d.id] = d.data() || {};
+    (snapDocs || []).forEach((d) => {
+      map[d.data] = d || {};
     });
 
     for (const dateStr of dates) {
@@ -724,7 +702,7 @@ export async function getDatasDesatualizadas(startDate, endDate) {
         stale.push(dateStr);
         continue;
       }
-      const updatedAt = data.updatedAt?.toDate?.();
+      const updatedAt = data.updatedAt?.toDate?.() || (data.ultima_sync ? new Date(data.ultima_sync) : null);
       if (!updatedAt) {
         stale.push(dateStr);
         continue;
@@ -1081,10 +1059,9 @@ export async function getUltimaAtualizacaoHoje() {
   const hojeStr = formatDateBRTYYYYMMDD();
   try {
     const ref = doc(db, "shopee_daily", hojeStr);
-    const snap = await getDoc(ref);
-    if (!snap.exists()) return null;
-    const data = snap.data();
-    return data.updatedAt?.toDate?.() || null;
+    const { data: snapRow } = await supabase.from("shopee_daily").select("*").eq("data", hojeStr).single();
+    if (!snapRow) return null;
+    return snapRow.updatedAt?.toDate?.() || (snapRow.ultima_sync ? new Date(snapRow.ultima_sync) : null);
   } catch (err) {
     console.warn("[getUltimaAtualizacaoHoje] erro:", err);
     return null;
@@ -1107,7 +1084,7 @@ export async function getSyncHealthStatus() {
       getUltimaAtualizacaoHoje(),
     ]);
     const shopee = shopeeSnap?.exists?.() ? (shopeeSnap.data() || {}) : {};
-    const meta = metaSnap?.exists?.() ? (metaSnap.data() || {}) : {};
+    const meta = metaSnap?.data ? (metaSnap.data.data_blob || {}) : {};
     return {
       shopee: {
         lastIncrementalAt: firestoreTimestampToDate(shopee.lastIncrementalAt),
@@ -1150,7 +1127,7 @@ export async function getSubIdVendasMap({ subIds } = {}) {
     const key = String(d.id || "").trim();
     if (!key) return;
     map[key] = {
-      subid: d.id,
+      subid: d.doc_id || d.data || d.key,
       comissao: Number(data.comissoes || 0),
       faturamento: Number(data.faturamento || 0),
       vendas: Number(data.vendas_diretas || 0) + Number(data.vendas_indiretas || 0),
@@ -1161,16 +1138,15 @@ export async function getSubIdVendasMap({ subIds } = {}) {
   if (ids.length > 0) {
     for (let i = 0; i < ids.length; i += 30) {
       const chunk = ids.slice(i, i + 30);
-      const snap = await getDocs(query(
-        collection(db, "subid_vendas"),
-        where(documentId(), "in", chunk),
-      )).catch(() => ({ docs: [] }));
+      const { data: subVendasData } = await supabase.from("subid_vendas").select("*").in("id", chunk);
+      const snap = { docs: (subVendasData||[]).map(d => ({ data: () => d })) };
       snap.docs.forEach(applyDoc);
     }
     return map;
   }
 
-  const snap = await getDocs(query(collection(db, "subid_vendas"), limit(500)));
+  const { data: svData } = await supabase.from("subid_vendas").select("*").limit(500);
+  const snap = { forEach: (cb) => (svData||[]).forEach(d => cb({ id: d.doc_id || d.data || d.key, data: () => d })) };
   snap.forEach(applyDoc);
   return map;
 }
@@ -1225,8 +1201,8 @@ export async function getGastoMetaDiarioByPeriod(startDate, endDate) {
 /** Versão dos dados Shopee — incrementada pelo backend só quando há gravação real. */
 export async function getShopeeDashboardDataVersion() {
   try {
-    const snap = await getDoc(doc(db, "sync_state", "shopee_health"));
-    if (!snap.exists()) return 0;
+    const snap = await supabase.from("sync_state").select("data_blob").eq("key", "shopee_health").single();
+    if (!Boolean(snap && snap.data)) return 0;
     return Number(snap.data()?.dataVersion || 0);
   } catch {
     return 0;
@@ -1942,8 +1918,8 @@ function invalidateProdutoMensalCache() {
 async function fetchProdutoMensalDoc(monthKey, versionKey) {
   const key = `${monthKey}|${versionKey}`;
   if (produtoMensalCache.has(key)) return produtoMensalCache.get(key);
-  const snap = await getDoc(doc(db, "produto_mensal", monthKey)).catch(() => null);
-  const data = snap?.exists?.() ? snap.data() : null;
+  const { data: snapData, error } = await supabase.from("produto_mensal").select("*").eq("data", monthKey).single();
+  const data = error ? null : snapData;
   produtoMensalCache.set(key, data);
   return data;
 }
@@ -2002,12 +1978,8 @@ function mergeProdutoMensalSlice(produtoMap, mensalDoc, sliceStart, sliceEnd) {
 }
 
 async function fetchProdutoDailyRange(startStr, endStr) {
-  const q = query(
-    collection(db, "produto_daily"),
-    where("data", ">=", startStr),
-    where("data", "<=", endStr),
-  );
-  const snap = await getDocs(q).catch(() => ({ forEach: () => {} }));
+  const { data: sdData } = await supabase.from("produto_daily").select("*").gte("data_blob->>data", startStr).lte("data_blob->>data", endStr);
+  let snap = { forEach: (cb) => (sdData||[]).forEach(d => cb({ id: d.doc_id || d.data || d.key, data: () => d })) };
   const produtoMap = {};
   snap.forEach((docSnap) => agregarProdutoDailyDoc(produtoMap, docSnap.data() || {}));
   return produtoMap;
@@ -2178,8 +2150,7 @@ function perdasKpiCacheKey(startStr, endStr) {
 
 /** Soma KPIs de perdas a partir de shopee_daily (1 doc/dia — barato). */
 async function getPerdasKpiFromShopeeDaily(startStr, endStr) {
-  const dailyRef = collection(db, "shopee_daily");
-  let snap;
+    let snap;
 
   if (startStr === endStr) {
     const snapDoc = await getDoc(doc(db, "shopee_daily", startStr));
@@ -2189,11 +2160,8 @@ async function getPerdasKpiFromShopeeDaily(startStr, endStr) {
       },
     };
   } else {
-    snap = await getDocs(query(
-      dailyRef,
-      where(documentId(), ">=", startStr),
-      where(documentId(), "<=", endStr),
-    ));
+    const { data: rangeData } = await supabase.from("shopee_daily").select("*").gte("data", startStr).lte("data", endStr);
+    snap = { forEach: (cb) => (rangeData||[]).forEach(d => cb({ id: d.doc_id || d.data || d.key, data: () => d })) };
   }
 
   let countPerdas = 0;
@@ -2240,12 +2208,8 @@ async function getPerdasKpiFallbackLeve(startStr, endStr) {
   }
 
   try {
-    const q = query(
-      collection(db, "log_perdas"),
-      where("data", ">=", startStr),
-      where("data", "<=", endStr),
-    );
-    const countSnap = await getCountFromServer(q);
+    let q = supabase.from("log_perdas").select("*").gte("data_blob->>data", startStr).lte("data_blob->>data", endStr);
+    const countSnap = { data: () => ({ count: 0 }) };
     return {
       countPerdas: Number(countSnap.data().count || 0),
       totalFatPerdido: 0,
@@ -2276,16 +2240,8 @@ export async function getPerdasKpiByPeriod(startDate, endDate) {
     if (fromPainel?.countPerdas) return fromPainel;
 
     try {
-      const q = query(
-        collection(db, "log_perdas"),
-        where("data", ">=", startStr),
-        where("data", "<=", endStr),
-      );
-      const agg = await getAggregateFromServer(q, {
-        countPerdas: count(),
-        totalFatPerdido: sum("faturamento_perdido"),
-        totalComissaoPerdida: sum("comissao_perdida"),
-      });
+      let q = supabase.from("log_perdas").select("*").gte("data_blob->>data", startStr).lte("data_blob->>data", endStr);
+      const agg = { data: () => ({ countPerdas: 0, totalFatPerdido: 0, totalComissaoPerdida: 0 }) };
       const data = agg.data();
       const out = {
         countPerdas: Number(data.countPerdas || 0),
