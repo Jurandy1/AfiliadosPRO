@@ -51,11 +51,11 @@ export function clearMetaAdsCache() {
 export async function getMetaDemographics() {
   const { data: snap, error } = await supabase
     .from("meta_demographics")
-    .select("ad_id, data_blob")
+    .select("id, data_blob")
     .order("data_blob->>importadoEm", { ascending: false })
     .limit(1);
     
   if (error || !snap || snap.length === 0) return null;
   const docSnap = snap[0];
-  return { id: docSnap.ad_id, ...(docSnap.data_blob || {}) };
+  return { id: docSnap.id, ...(docSnap.data_blob || {}) };
 }

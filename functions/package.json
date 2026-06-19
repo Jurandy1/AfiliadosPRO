@@ -8,6 +8,6 @@
   "dependencies": {
     "@supabase/supabase-js": "^2.108.2",
     "firebase-admin": "^12.7.0",
-    "firebase-functions": "^4.7.0"
+    "firebase-functions": "^7.2.5"
   }
 }

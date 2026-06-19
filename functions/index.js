@@ -18,6 +18,23 @@ setGlobalOptions({ region: "southamerica-east1" });
 admin.initializeApp();
 
 const db = admin.firestore();
+
+// --- SUPABASE DUAL-WRITE ADAPTER ---
+const { createClient } = require("@supabase/supabase-js");
+const { syncToSupabase } = require("./lib/supabaseSync");
+
+const SUPABASE_URL = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL;
+const SUPABASE_KEY = process.env.VITE_SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+let supabase = null;
+if (SUPABASE_URL && SUPABASE_KEY) {
+  supabase = createClient(SUPABASE_URL, SUPABASE_KEY, {
+    auth: { persistSession: false },
+  });
+  console.log("[Supabase] Cliente inicializado com sucesso para Dual-Write.");
+} else {
+  console.warn("[Supabase] Credenciais não encontradas. Dual-write desativado.");
+}
 const { FieldValue } = admin.firestore;
 const { normalizeSubId } = require("./lib/normalizeSubId");
 const { refreshMonthlyBucketsForDates } = require("./lib/monthlyRollup");
@@ -328,6 +345,14 @@ async function runMetaSync({ datePreset }) {
   });
 
   await batch.commit();
+
+  // Supabase Dual-Write para Meta Ads e Demografia
+  if (supabase) {
+    const metaAdsToSupabase = metaAdsPending.map(p => ({ tabela: "meta_ads", id: p.ref.id, data: p.payload }));
+    const demoToSupabase = [{ tabela: "meta_demographics", id: importacaoId, data: { importacaoId, periodo: datePreset, ageGender: formatAgeGenderAgg(ageGenderAgg), region: formatRegionAgg(regionAgg) } }];
+    await syncToSupabase(supabase, [...metaAdsToSupabase, ...demoToSupabase], []).catch(console.error);
+  }
+
   await touchImportacoesLatestBackend("meta_ads", importacaoId);
 
   return { importacaoId, ads: ads.length, errors };
@@ -4114,14 +4139,20 @@ async function prefetchDocMap(refs) {
 /** Enfileira batch.set só se payload de negócio difere do doc existente. */
 async function applyPendingWrites(state, flush, pending, { merge = false, forceWrite = false } = {}) {
   if (!pending.length) return { gravados: 0, ignorados: 0 };
+  
+  const supabaseUpserts = [];
 
   if (!FIRESTORE_SKIP_UNCHANGED || forceWrite) {
     let gravados = 0;
     for (const { ref, payload } of pending) {
       state.batch.set(ref, payload, merge ? { merge: true } : undefined);
+      supabaseUpserts.push({ tabela: ref.parent.id, id: ref.id, data: payload });
       state.count++;
       gravados++;
       await flush();
+    }
+    if (supabase && supabaseUpserts.length > 0) {
+      await syncToSupabase(supabase, supabaseUpserts, []).catch(console.error);
     }
     return { gravados, ignorados: 0 };
   }
@@ -4138,9 +4169,14 @@ async function applyPendingWrites(state, flush, pending, { merge = false, forceW
       continue;
     }
     state.batch.set(ref, payload, merge ? { merge: true } : undefined);
+    supabaseUpserts.push({ tabela: ref.parent.id, id: ref.id, data: payload });
     state.count++;
     gravados++;
     await flush();
+  }
+
+  if (supabase && supabaseUpserts.length > 0) {
+    await syncToSupabase(supabase, supabaseUpserts, []).catch(console.error);
   }
 
   return { gravados, ignorados };
