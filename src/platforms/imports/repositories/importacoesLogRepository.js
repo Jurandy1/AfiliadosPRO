@@ -29,15 +29,14 @@ export async function touchImportacoesLatest(tipo, importId) {
   const field = TIPO_TO_FIELD[tipo];
   if (!field || !importId) return;
   try {
-    const { data: snap } = await supabase.from("sync_state").select("data_blob").eq("id", LATEST_IMPORTS_DOC).single();
+    const { data: snap } = await supabase.from("sync_state").select("data_blob").eq("key", LATEST_IMPORTS_DOC).single();
     const data = snap?.data_blob || {};
     data[field] = importId;
     data.updatedAt = new Date().toISOString();
     
     await supabase.from("sync_state").upsert({
-      id: LATEST_IMPORTS_DOC,
+      key: LATEST_IMPORTS_DOC,
       data_blob: data,
-      updated_at: data.updatedAt
     });
     sessionCache = null;
   } catch (err) {
@@ -53,7 +52,7 @@ export async function getLatestImportIds() {
   }
 
   try {
-    const { data: snap } = await supabase.from("sync_state").select("data_blob").eq("id", LATEST_IMPORTS_DOC).single();
+    const { data: snap } = await supabase.from("sync_state").select("data_blob").eq("key", LATEST_IMPORTS_DOC).single();
     if (snap) {
       const d = snap.data_blob || {};
       sessionCache = {

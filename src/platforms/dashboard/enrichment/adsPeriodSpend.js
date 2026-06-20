@@ -28,16 +28,26 @@ export function calcOverlapRatio(filterStart, filterEnd, itemStart, itemEnd) {
 
 function aggregateMetaFromDailySnap(snap) {
   const metaBySub = {};
-  if (!snap?.forEach) return metaBySub;
+  console.log("[DEBUG v9] aggregateMetaFromDailySnap chamado, snap:", snap);
+  if (!snap?.forEach) {
+    console.log("[DEBUG v9] snap sem forEach, retornando vazio");
+    return metaBySub;
+  }
+  let linhasProcessadas = 0;
+  let semKey = 0;
   snap.forEach((docSnap) => {
+    linhasProcessadas++;
     const m = docSnap.data() || {};
     const key = normalizeSubId(m.subid || m.nomeAnuncio || "");
-    if (!key) return;
+    if (!key) { semKey++; return; }
     if (!metaBySub[key]) metaBySub[key] = { ids: [], spend: 0, cliques_anuncio: 0 };
-    if (m.id || docSnap.id) metaBySub[key].ids.push(m.id || docSnap.id);
-    metaBySub[key].spend += Number(m.valorUsado || 0);
-    metaBySub[key].cliques_anuncio += Number(m.cliquesTotal || 0);
+    const adId = m.ad_id || m.id || docSnap.id;
+    if (adId) metaBySub[key].ids.push(adId);
+    metaBySub[key].spend += Number(m.gasto ?? m.valorUsado ?? 0);
+    metaBySub[key].cliques_anuncio += Number(m.cliques ?? m.cliquesTotal ?? 0);
   });
+  console.log(`[DEBUG v9] ${linhasProcessadas} linhas → ${Object.keys(metaBySub).length} subs com gasto (${semKey} sem key)`);
+  console.log("[DEBUG v9] metaBySub:", metaBySub);
   return metaBySub;
 }
 
