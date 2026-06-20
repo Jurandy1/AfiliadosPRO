@@ -1081,8 +1081,8 @@ function firestoreTimestampToDate(value) {
 export async function getSyncHealthStatus() {
   try {
     const [shopeeSnap, metaSnap, ultimaHoje] = await Promise.all([
-      supabase.from("sync_state").select("data_blob").eq("id", "shopee_health").single().then(r => r.data || null).catch(() => null),
-      supabase.from("sync_state").select("data_blob").eq("id", "meta_health").single().then(r => r.data || null).catch(() => null),
+      supabase.from("sync_state").select("data_blob").eq("key", "shopee_health").single().then(r => r.data || null).catch(() => null),
+      supabase.from("sync_state").select("data_blob").eq("key", "meta_health").single().then(r => r.data || null).catch(() => null),
       getUltimaAtualizacaoHoje(),
     ]);
     const shopee = shopeeSnap?.data_blob || {};

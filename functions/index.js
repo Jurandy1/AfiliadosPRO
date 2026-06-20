@@ -3622,11 +3622,62 @@ function agruparPorData(nodes) {
   };
 }
 
+/**
+ * Replica um update de sync_state pro Supabase, fazendo merge com o doc existente.
+ * Coluna real no Supabase é `key`, não `id`.
+ */
+async function syncStateToSupabase(docId, patch) {
+  if (!supabase || !docId || !patch || typeof patch !== "object") return;
+  try {
+    const cleanPatch = {};
+    for (const [k, val] of Object.entries(patch)) {
+      if (val == null) {
+        cleanPatch[k] = null;
+        continue;
+      }
+      if (typeof val === "object" && val.constructor && val.constructor.name === "FieldValue") {
+        try {
+          if (val.isEqual && val.isEqual(FieldValue.serverTimestamp())) {
+            cleanPatch[k] = new Date().toISOString();
+            continue;
+          }
+        } catch { /* ignore */ }
+        continue;
+      }
+      if (typeof val === "object" && typeof val.toDate === "function") {
+        cleanPatch[k] = val.toDate().toISOString();
+        continue;
+      }
+      cleanPatch[k] = val;
+    }
+    cleanPatch.updatedAt = new Date().toISOString();
+
+    const { data: existing } = await supabase
+      .from("sync_state")
+      .select("data_blob")
+      .eq("key", docId)
+      .maybeSingle();
+
+    const merged = { ...(existing?.data_blob || {}), ...cleanPatch };
+
+    const { error } = await supabase
+      .from("sync_state")
+      .upsert({ key: docId, data_blob: merged }, { onConflict: "key" });
+
+    if (error) {
+      console.error(`[SupabaseSync] sync_state/${docId} upsert falhou:`, error.message);
+    }
+  } catch (err) {
+    console.error(`[SupabaseSync] sync_state/${docId} erro:`, err?.message || err);
+  }
+}
+
 async function touchShopeeSyncHealth(patch) {
   await db.collection("sync_state").doc("shopee_health").set({
     ...patch,
     updatedAt: FieldValue.serverTimestamp(),
   }, { merge: true });
+  await syncStateToSupabase("shopee_health", patch).catch(() => null);
 }
 
 async function touchMetaSyncHealth(patch) {
@@ -3634,6 +3685,7 @@ async function touchMetaSyncHealth(patch) {
     ...patch,
     updatedAt: FieldValue.serverTimestamp(),
   }, { merge: true });
+  await syncStateToSupabase("meta_health", patch).catch(() => null);
 }
 
 async function bumpDailyVersionsManifest(dates, prefix) {
@@ -4167,6 +4219,9 @@ async function applyPendingWrites(state, flush, pending, { merge = false, forceW
     if (existing && payloadsIguais(payload, existing)) {
       ignorados++;
       state.skipped = (state.skipped || 0) + 1;
+      // Firebase pula (igual), mas Supabase recebe upsert idempotente
+      // pra garantir paridade mesmo quando Supabase está atrás.
+      supabaseUpserts.push({ tabela: ref.parent.id, id: ref.id, data: payload });
       continue;
     }
     state.batch.set(ref, payload, merge ? { merge: true } : undefined);

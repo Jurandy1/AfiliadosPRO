@@ -73,19 +73,47 @@ async function syncToSupabase(supabase, upserts, deletes) {
           tabela = "produto_daily";
           onConflict = "data,item_id";
           mappedRows = rows.map(({ data }) => ({
-            ...data,
-            item_id: String(data.produto_id || data.item_id || ""),
-            updatedAt: new Date().toISOString()
+            data: data.data,
+            item_id: String(data.produto_id || data.item_id || "desconhecido"),
+            shop_id: data.shop_id || data.id_loja || null,
+            nome: String(data.nome || "Produto"),
+            comissao: Number(data.comissao_estimada ?? data.comissoes ?? 0),
+            comissao_concluida: Number(data.comissoes_concluidas ?? data.comissao_concluida ?? 0),
+            comissao_pendente: Number(data.comissoes_pendentes ?? data.comissao_pendente ?? 0),
+            comissao_cancelada: Number(data.comissoes_canceladas ?? data.comissao_cancelada ?? 0),
+            vendas: Math.round(Number(data.vendas ?? data.qtd_itens ?? 0)),
+            qtd_itens: Math.round(Number(data.qtd_itens ?? 0)),
+            faturamento: Number(data.faturamento ?? 0),
+            cliques: Math.round(Number(data.cliques ?? 0)),
+            ultima_sync: new Date().toISOString(),
           }));
+          // Deduplicar no lote
+          mappedRows = Object.values(mappedRows.reduce((acc, row) => {
+            acc[`${row.data}_${row.item_id}`] = row;
+            return acc;
+          }, {}));
           break;
 
         case "log_perdas":
           tabela = "log_perdas";
-          onConflict = "data,order_id,item_id";
+          onConflict = "data,order_id,item_id,conversion_id";
           mappedRows = rows.map(({ data }) => ({
-            ...data,
-            updatedAt: new Date().toISOString()
+            data: data.data,
+            order_id: String(data.orderId || data.order_id || "no"),
+            item_id: String(data.itemId || data.item_id || "ni"),
+            conversion_id: String(data.conversionId || data.conversion_id || "nc"),
+            subid: data.subid || data.sub_id || null,
+            comissao_perdida: Number(data.comissao_perdida ?? 0),
+            valor_pedido: Number(data.faturamento_perdido ?? data.valor_pedido ?? 0),
+            motivo: (String(data.status || data.motivo || "").trim() || null),
+            item_notes: data.item_notes || data.itemNotes || null,
+            detectado_em: new Date().toISOString(),
           }));
+          // Deduplicar no lote
+          mappedRows = Object.values(mappedRows.reduce((acc, row) => {
+            acc[`${row.data}_${row.order_id}_${row.item_id}_${row.conversion_id}`] = row;
+            return acc;
+          }, {}));
           break;
 
         case "importacoes":
@@ -138,9 +166,9 @@ async function syncToSupabase(supabase, upserts, deletes) {
 
         case "sync_state":
           tabela = "sync_state";
-          onConflict = "id";
+          onConflict = "key";
           mappedRows = rows.map(({ id, data }) => ({
-            id,
+            key: id,
             data_blob: data,
           }));
           break;
