@@ -1946,16 +1946,21 @@ function ensureProdutoMapEntry(produtoMap, pid, nome = "Produto") {
 }
 
 function agregarProdutoDailyDoc(produtoMap, d) {
-  const pid = String(d.produto_id || "").trim() || "desconhecido";
+  // Schema Supabase atual: item_id, nome, comissao, comissao_concluida,
+  // comissao_pendente, comissao_cancelada, qtd_itens, faturamento, cliques.
+  // Aliases legados (Firestore) mantidos como fallback.
+  const pid = String(d.item_id || d.produto_id || "").trim() || "desconhecido";
   const p = ensureProdutoMapEntry(produtoMap, pid, d.nome || "Produto");
-  p.comissoes += Number(d.comissao_estimada ?? d.comissoes ?? 0);
-  p.comissao_estimada += Number(d.comissao_estimada ?? d.comissoes ?? 0);
-  p.comissoes_pendentes += Number(d.comissoes_pendentes || 0);
-  p.comissoes_concluidas += Number(d.comissoes_concluidas || 0);
+  const comissaoTotal = Number(d.comissao ?? d.comissao_estimada ?? d.comissoes ?? 0);
+  p.comissoes += comissaoTotal;
+  p.comissao_estimada += comissaoTotal;
+  p.comissoes_pendentes += Number(d.comissao_pendente ?? d.comissoes_pendentes ?? 0);
+  p.comissoes_concluidas += Number(d.comissao_concluida ?? d.comissoes_concluidas ?? 0);
   p.qtd_itens += Number(d.qtd_itens || 0);
   p.faturamento += Number(d.faturamento || 0);
   p.cliques += Number(d.cliques || 0);
   if (d.data) p._datas.add(d.data);
+  // produto_daily no Supabase não tem coluna sub_ids — fallback do Firestore
   if (d.sub_id) p.sub_ids.add(d.sub_id);
   if (Array.isArray(d.sub_ids)) d.sub_ids.forEach((s) => p.sub_ids.add(s));
 }
@@ -1980,10 +1985,14 @@ function mergeProdutoMensalSlice(produtoMap, mensalDoc, sliceStart, sliceEnd) {
 }
 
 async function fetchProdutoDailyRange(startStr, endStr) {
-  const { data: sdData } = await supabase.from("produto_daily").select("*").gte("data_blob->>data", startStr).lte("data_blob->>data", endStr);
-  let snap = { forEach: (cb) => (sdData||[]).forEach(d => cb({ id: d.doc_id || d.data || d.key, data: () => d })) };
+  const { data: sdData, error } = await supabase
+    .from("produto_daily")
+    .select("data,item_id,nome,comissao,comissao_concluida,comissao_pendente,comissao_cancelada,qtd_itens,vendas,faturamento,cliques")
+    .gte("data", startStr)
+    .lte("data", endStr);
+  if (error) console.warn("[metricsRepository] produto_daily query failed:", error.message);
   const produtoMap = {};
-  snap.forEach((docSnap) => agregarProdutoDailyDoc(produtoMap, docSnap.data() || {}));
+  (sdData || []).forEach((d) => agregarProdutoDailyDoc(produtoMap, d));
   return produtoMap;
 }
 
@@ -2210,7 +2219,7 @@ async function getPerdasKpiFallbackLeve(startStr, endStr) {
   }
 
   try {
-    let q = supabase.from("log_perdas").select("*").gte("data_blob->>data", startStr).lte("data_blob->>data", endStr);
+    let q = supabase.from("log_perdas").select("*").gte("data", startStr).lte("data", endStr);
     const countSnap = { data: () => ({ count: 0 }) };
     return {
       countPerdas: Number(countSnap.data().count || 0),
@@ -2242,7 +2251,7 @@ export async function getPerdasKpiByPeriod(startDate, endDate) {
     if (fromPainel?.countPerdas) return fromPainel;
 
     try {
-      let q = supabase.from("log_perdas").select("*").gte("data_blob->>data", startStr).lte("data_blob->>data", endStr);
+      let q = supabase.from("log_perdas").select("*").gte("data", startStr).lte("data", endStr);
       const agg = { data: () => ({ countPerdas: 0, totalFatPerdido: 0, totalComissaoPerdida: 0 }) };
       const data = agg.data();
       const out = {
