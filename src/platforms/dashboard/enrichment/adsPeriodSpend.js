@@ -48,6 +48,14 @@ function aggregateMetaFromDailySnap(snap) {
   });
   console.log(`[DEBUG v9] ${linhasProcessadas} linhas → ${Object.keys(metaBySub).length} subs com gasto (${semKey} sem key)`);
   console.log("[DEBUG v9] metaBySub:", metaBySub);
+  console.log("[DEBUG v10A] tem canelada03?", "canelada03" in metaBySub, metaBySub["canelada03"]);
+  console.log("[DEBUG v10A] tem canelada07?", "canelada07" in metaBySub, metaBySub["canelada07"]);
+  console.log("[DEBUG v10A] tem canelada08?", "canelada08" in metaBySub, metaBySub["canelada08"]);
+  console.log("[DEBUG v10A] tem lgcanelada03?", "lgcanelada03" in metaBySub, metaBySub["lgcanelada03"]);
+  console.log("[DEBUG v10A] tem lgcanelada05?", "lgcanelada05" in metaBySub, metaBySub["lgcanelada05"]);
+  console.log("[DEBUG v10A] tem canelada02loc?", "canelada02loc" in metaBySub, metaBySub["canelada02loc"]);
+  console.log("[DEBUG v10A] tem flare01?", "flare01" in metaBySub, metaBySub["flare01"]);
+  console.log("[DEBUG v10A] TODAS as keys (sorted):", Object.keys(metaBySub).sort().join(", "));
   return metaBySub;
 }
 

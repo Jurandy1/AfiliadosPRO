@@ -174,6 +174,36 @@ export function enrichComMeta(produto, { metaBySub = {}, pinBySub = {} } = {}) {
   const p = produto || {};
   const isPeriodRow = p.fonte === "produto_daily";
   const subIds = p.sub_ids || (p.sub_id ? [p.sub_id] : []);
+
+  // DEBUG v10B — captura só o produto Canelada Poliamida
+  const ehCaneladaPoliamida =
+    String(p.produto_id || p.id || "").includes("58258532428") ||
+    String(p.nome || "").toLowerCase().includes("canelada poliamida");
+
+  if (ehCaneladaPoliamida) {
+    console.log("[DEBUG v10B Canelada] produto:", {
+      produto_id: p.produto_id,
+      id: p.id,
+      doc_id: p.doc_id,
+      id_item: p.id_item,
+      nome: p.nome,
+      sub_ids_raw: p.sub_ids,
+      sub_id_raw: p.sub_id,
+      sub_ids_eh_array: Array.isArray(p.sub_ids),
+      sub_ids_length: Array.isArray(p.sub_ids) ? p.sub_ids.length : "N/A",
+      subIds_calculado: subIds,
+      subIds_length: subIds.length,
+      cad_keys: Object.keys(p).slice(0, 30),
+      metaBySub_size: Object.keys(metaBySub).length,
+    });
+
+    subIds.forEach((sid) => {
+      const norm = normalizeSubId(sid);
+      const match = metaBySub[norm];
+      console.log(`[DEBUG v10B Canelada] sub="${sid}" → norm="${norm}" → match?`, !!match, match);
+    });
+  }
+
   const autoMeta = [];
   const autoPin = [];
   let autoInvest = 0;
@@ -196,6 +226,15 @@ export function enrichComMeta(produto, { metaBySub = {}, pinBySub = {} } = {}) {
   const investimento = isPeriodRow
     ? investimentoPeriodo
     : ((p.investimento && p.investimento > 0) ? p.investimento : investimentoPeriodo);
+
+  if (ehCaneladaPoliamida) {
+    console.log("[DEBUG v10B Canelada] RESULTADO:", {
+      autoMeta,
+      autoInvest,
+      metaAdIds_final: metaAdIds,
+      investimento_final: investimento,
+    });
+  }
 
   return {
     ...p,
