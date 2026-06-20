@@ -33,19 +33,29 @@ async function syncToSupabase(supabase, upserts, deletes) {
           onConflict = "data";
           mappedRows = rows.map(({ id, data }) => ({
             data: data.data || id,
-            pedidos: data.pedidos || 0,
-            vendas: data.vendas || 0,
-            qtd_itens: data.qtd_itens || 0,
-            comissao: data.comissao_total || data.comissao_estimada || data.comissao || 0,
-            comissao_concluida: data.comissao_concluida || 0,
-            comissao_pendente: data.comissao_pendente || 0,
-            comissao_cancelada: data.comissao_cancelada || data.perdas_comissao || 0,
-            fat_bruto: data.faturamento || data.fat_bruto || data.gmv_total || 0,
-            pedidos_pendentes: data.pedidos_pendentes || 0,
-            pedidos_cancelados: data.pedidos_cancelados || 0,
-            pedidos_completos: data.pedidos_concluidos || data.pedidos_completos || 0,
+            // CORREÇÃO: vendas = qtd_itens (total de itens vendidos), 
+            // qtd_itens duplica vendas, e total separado de pedidos
+            pedidos: Number(data.pedidos || 0),
+            vendas: Number(data.vendas ?? data.qtd_itens ?? 0),
+            qtd_itens: Number(data.vendas ?? data.qtd_itens ?? 0),
+            vendas_diretas: Number(data.vendas_diretas || 0),
+            vendas_indiretas: Number(data.vendas_indiretas || 0),
+            comissao: Number(data.comissao_estimada ?? data.comissao_total ?? data.comissao ?? 0),
+            comissao_concluida: Number(data.comissao_concluida || 0),
+            comissao_pendente: Number(data.comissao_pendente || 0),
+            comissao_cancelada: Number(data.comissao_cancelada ?? data.perdas_comissao ?? 0),
+            fat_bruto: Number(data.faturamento ?? data.fat_bruto ?? data.gmv_total ?? 0),
+            pedidos_pendentes: Number(data.pedidos_pendentes || 0),
+            pedidos_cancelados: Number(data.pedidos_cancelados || 0),
+            pedidos_completos: Number(data.pedidos_concluidos ?? data.pedidos_completos ?? 0),
+            pedidos_nao_pagos: Number(data.pedidos_nao_pagos || 0),
+            comissao_nao_paga: Number(data.comissao_nao_paga || 0),
+            mcn_fee: Number(data.mcn_fee || 0),
+            perdas_pedidos: Number(data.perdas_pedidos || 0),
+            perdas_fat: Number(data.perdas_fat || 0),
+            perdas_comissao: Number(data.perdas_comissao || 0),
             agg_mode: data.aggregation_mode || data.agg_mode || 'promosapp',
-            ultima_sync: new Date().toISOString()
+            ultima_sync: new Date().toISOString(),
           }));
           break;
 
