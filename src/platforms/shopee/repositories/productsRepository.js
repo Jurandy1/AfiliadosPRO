@@ -44,8 +44,15 @@ export async function getProdutosByItemIds(itemIds = []) {
 
     const foundIds = new Set((snap || []).map((d) => d.doc_id));
     (snap || []).forEach((d) => {
-      cadastroSet(d.doc_id, d);
-      fetched.push({ id: d.doc_id, ...d });
+      // Normaliza snake_case → camelCase que o frontend espera
+      const normalized = {
+        ...d,
+        metaAdIds: Array.isArray(d.meta_ad_ids) ? d.meta_ad_ids : (d.canais?.metaAdIds || []),
+        pinterestAdIds: Array.isArray(d.pinterest_ad_ids) ? d.pinterest_ad_ids : (d.canais?.pinterestAdIds || []),
+        investimento: Number(d.investimento ?? d.canais?.investimento ?? 0),
+      };
+      cadastroSet(d.doc_id, normalized);
+      fetched.push({ id: d.doc_id, ...normalized });
     });
     for (const docId of chunk) {
       if (!foundIds.has(docId)) {
@@ -66,7 +73,13 @@ export async function getProdutos(importacaoId = null) {
     .eq("importacao_id", importacaoId);
 
   if (error || !snap) return [];
-  return snap.map((d) => ({ id: d.doc_id, ...d }));
+  return snap.map((d) => ({
+    id: d.doc_id,
+    ...d,
+    metaAdIds: Array.isArray(d.meta_ad_ids) ? d.meta_ad_ids : (d.canais?.metaAdIds || []),
+    pinterestAdIds: Array.isArray(d.pinterest_ad_ids) ? d.pinterest_ad_ids : (d.canais?.pinterestAdIds || []),
+    investimento: Number(d.investimento ?? d.canais?.investimento ?? 0),
+  }));
 }
 
 export async function deleteProduto(id) {
@@ -114,6 +127,10 @@ export async function saveAdLink(produtoId, { metaAdIds = [], pinterestAdIds = [
   await supabase
     .from("produtos")
     .update({
+      meta_ad_ids: metaUnique,
+      pinterest_ad_ids: pinUnique,
+      investimento,
+      // Mantém canais por retrocompatibilidade até confirmar 100% que nada mais lê dele
       canais: { metaAdIds: metaUnique, pinterestAdIds: pinUnique, investimento },
       updated_at: new Date().toISOString(),
     })

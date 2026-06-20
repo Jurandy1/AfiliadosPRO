@@ -44,6 +44,7 @@ export function cadastroSet(docId, data) {
 export function invalidateProdutosCache() {
   fullScanCache = null;
   cadastroMem.clear();
-  // We won't clear the entire IDB here because it holds dashboard data too.
-  // Instead we let TTL handle expired products, or they will be refreshed as needed.
+  // Limpa também o IDB dos cadastros pra updates aparecerem imediatamente.
+  // Não toca em outras chaves (dashboard).
+  idbClear().catch(() => {});
 }
