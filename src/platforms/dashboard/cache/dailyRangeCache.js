@@ -13,9 +13,10 @@
  * invalidateDailyRangeCache() ou invalidateDailyRangeCache("subid_daily").
  */
 import { supabase } from "../../../services/supabase/client";
+import { fetchDataVersions } from "./dataVersions";
 
-const TTL_MS = 60_000;
-const MAX_SLOTS = 6;
+const TTL_MS = 30_000;
+const MAX_SLOTS = 4;
 
 const _caches = new Map();   // collectionName → Map<key, {data, ts}>
 const _inFlight = new Map(); // `${collectionName}|${key}` → Promise
@@ -112,7 +113,14 @@ async function cachedFetch(collectionName, key, fetchFn) {
 /** subid_daily com cache. */
 export async function fetchSubIdDailyForRange(startDate, endDate) {
   if (!startDate || !endDate) return [];
-  const key = `${startDate}|${endDate}`;
+
+  let versionSuffix = "";
+  try {
+    const v = await fetchDataVersions();
+    versionSuffix = `|${v.versionKey}`;
+  } catch {}
+
+  const key = `${startDate}|${endDate}${versionSuffix}`;
   return cachedFetch("subid_daily", key, () => fetchByDataField("subid_daily", startDate, endDate));
 }
 
@@ -130,7 +138,14 @@ export async function fetchCliqueDailyForRange(startDate, endDate) {
  */
 export async function fetchShopeeDailyForRange(startDate, endDate, isDailyMetricsVazio) {
   if (!startDate || !endDate) return [];
-  const key = `${startDate}|${endDate}`;
+
+  let versionSuffix = "";
+  try {
+    const v = await fetchDataVersions();
+    versionSuffix = `|${v.versionKey}`;
+  } catch {}
+
+  const key = `${startDate}|${endDate}${versionSuffix}`;
   return cachedFetch("shopee_daily", key, async () => {
     const { data, error } = await supabase
       .from("shopee_daily")

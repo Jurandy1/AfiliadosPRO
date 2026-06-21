@@ -53,6 +53,7 @@ export async function fetchDataVersions({ force = false } = {}) {
       cachedVersions = {
         shopeeVer,
         metaVer,
+        timeBucket: Math.floor(Date.now() / 30_000),
         versionKey: `${shopeeVer}:${metaVer}`,
       };
       cachedVersionsTs = Date.now();

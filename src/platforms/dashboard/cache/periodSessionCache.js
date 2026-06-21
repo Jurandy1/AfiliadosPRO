@@ -22,34 +22,38 @@ export function buildPeriodCacheKey(kind, startDate, endDate, versionKey, settin
   return `${kind}|${startDate}|${endDate}|${versionKey}|${settingsCacheKey(settings)}`;
 }
 
+// TTL máximo: 5 min — mesmo que o versionKey não mude, o cache expira
+const PERIOD_CACHE_TTL_MS = 5 * 60 * 1000;
+
 export async function getPeriodCacheEntry(key) {
-  return null; // Supabase: sem cache de período — dados sempre frescos
   if (isPeriodCacheDisabled()) return null;
-  
+
   let entry = store.get(key);
   if (!entry) {
     entry = await idbGet(key);
-    if (entry) {
-      store.set(key, entry);
-    }
+    if (entry) store.set(key, entry);
   }
-  
+
   if (!entry) return null;
-  
-  const kind = key.split("|")[0] || "desconhecido";
-    
+
+  // TTL: descarta entradas antigas mesmo que o versionKey seja igual
+  if (entry.storedAt && Date.now() - entry.storedAt > PERIOD_CACHE_TTL_MS) {
+    store.delete(key);
+    return null;
+  }
+
   return entry.payload;
 }
 
 export function setPeriodCacheEntry(key, payload, meta = {}) {
   if (isPeriodCacheDisabled()) return;
-  
+
   const entry = {
     payload,
     storedAt: Date.now(),
     ...meta,
   };
-  
+
   store.set(key, entry);
   idbSet(key, entry).catch(() => {});
 }
