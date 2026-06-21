@@ -3,6 +3,19 @@ import ReactDOM from 'react-dom/client'
 import App from './App.jsx'
 import './index.css'
 
+// Desregistra Service Workers antigos
+if ("serviceWorker" in navigator) {
+  navigator.serviceWorker.getRegistrations().then((regs) => {
+    regs.forEach((r) => r.unregister());
+  });
+}
+
+// Limpa caches do browser API antigos (Workbox, etc)
+if ("caches" in window) {
+  caches.keys().then((names) => {
+    names.forEach((name) => caches.delete(name));
+  });
+}
 
 function renderFatal(error) {
   const err = error?.reason || error?.error || error;
