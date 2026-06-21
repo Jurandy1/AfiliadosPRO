@@ -1349,10 +1349,11 @@ async function resolverAlvoAlinhamentoShopee(startDate, endDate) {
   if (!resultado) {
     const shopeeTot = await lerTotaisShopeeDailyPeriodo(startStr, endStr);
     if (shopeeTot) {
+      // Correção: lerTotaisShopeeDailyPeriodo retorna { comissao, gmv, pedidos, itens }
       resultado = {
-        comissao: shopeeTot.comissao_estimada,
-        gmv: shopeeTot.fat_bruto,
-        itens: shopeeTot.vendas,
+        comissao: shopeeTot.comissao,
+        gmv: shopeeTot.gmv,
+        itens: shopeeTot.itens,
         pedidos: shopeeTot.pedidos,
       };
     }
