@@ -37,47 +37,64 @@ async function cleanupImportedDataByTipo(tipo) {
   }
 
   if (tipo === "shopee_clique") {
-    const cliquesRemovidos = await deleteCollectionDocs("cliques_shopee");
     const cliqueDailyRemovidos = await deleteCollectionDocs("clique_daily");
-    
-    // Zera os cliques nos produtos
-    const { data: prodSnap } = await supabase.from("produtos").select("id, data_blob");
-    const toUpdate = (prodSnap || []).filter(p => (p.data_blob?.cliques || 0) > 0).map(p => {
-       p.data_blob.cliques = 0;
-       return { id: p.id, data_blob: p.data_blob, updated_at: new Date().toISOString() };
-    });
+
+    // Zera os cliques nos produtos (schema Supabase: doc_id, cliques)
+    const { data: prodSnap } = await supabase
+      .from("produtos")
+      .select("doc_id, cliques")
+      .gt("cliques", 0);
+    const toUpdate = (prodSnap || []).map(p => ({
+      doc_id: p.doc_id,
+      cliques: 0,
+      updated_at: new Date().toISOString(),
+    }));
     if (toUpdate.length > 0) {
-      await supabase.from("produtos").upsert(toUpdate);
+      await supabase.from("produtos").upsert(toUpdate, { onConflict: "doc_id" });
     }
-    
+
     invalidateDashboardCaches();
-    return { cliquesRemovidos, cliqueDailyRemovidos };
+    return { cliqueDailyRemovidos };
   }
 
   if (tipo === "meta_ads") {
     const metaRemovidos = await deleteCollectionDocs("meta_ads");
-    // limpa referencias nos produtos
-    const { data: prodSnap } = await supabase.from("produtos").select("id, data_blob");
-    const toUpdate = (prodSnap || []).filter(p => (p.data_blob?.investimento || 0) > 0).map(p => {
-       p.data_blob.metaAdIds = [];
-       p.data_blob.investimento = 0; // simplified
-       return { id: p.id, data_blob: p.data_blob, updated_at: new Date().toISOString() };
-    });
-    if (toUpdate.length > 0) await supabase.from("produtos").upsert(toUpdate);
+
+    // Limpa referências nos produtos (schema Supabase)
+    const { data: prodSnap } = await supabase
+      .from("produtos")
+      .select("doc_id")
+      .gt("investimento", 0);
+    const toUpdate = (prodSnap || []).map(p => ({
+      doc_id: p.doc_id,
+      meta_ad_ids: [],
+      investimento: 0,
+      updated_at: new Date().toISOString(),
+    }));
+    if (toUpdate.length > 0) {
+      await supabase.from("produtos").upsert(toUpdate, { onConflict: "doc_id" });
+    }
     invalidateDashboardCaches();
     return { metaRemovidos };
   }
 
   if (tipo === "pinterest") {
     const pinterestRemovidos = await deleteCollectionDocs("pinterest_ads");
-    // limpa referencias nos produtos
-    const { data: prodSnap } = await supabase.from("produtos").select("id, data_blob");
-    const toUpdate = (prodSnap || []).filter(p => (p.data_blob?.investimento || 0) > 0).map(p => {
-       p.data_blob.pinterestAdIds = [];
-       p.data_blob.investimento = 0; // simplified
-       return { id: p.id, data_blob: p.data_blob, updated_at: new Date().toISOString() };
-    });
-    if (toUpdate.length > 0) await supabase.from("produtos").upsert(toUpdate);
+
+    // Limpa referências nos produtos (schema Supabase)
+    const { data: prodSnap } = await supabase
+      .from("produtos")
+      .select("doc_id")
+      .gt("investimento", 0);
+    const toUpdate = (prodSnap || []).map(p => ({
+      doc_id: p.doc_id,
+      pinterest_ad_ids: [],
+      investimento: 0,
+      updated_at: new Date().toISOString(),
+    }));
+    if (toUpdate.length > 0) {
+      await supabase.from("produtos").upsert(toUpdate, { onConflict: "doc_id" });
+    }
     invalidateDashboardCaches();
     return { pinterestRemovidos };
   }
@@ -118,7 +135,12 @@ export async function removerImportacao(importacaoId, tipo, modo = null) {
 }
 
 export async function removerHistoricoShopeeVendas() {
-  const { data } = await supabase.from("importacoes").delete().eq("data_blob->>tipo", "shopee_venda").select("id");
+  // importacoes tem campo tipo direto (não dentro de data_blob)
+  const { data } = await supabase
+    .from("importacoes")
+    .delete()
+    .eq("tipo", "shopee_venda")
+    .select("id");
   return data ? data.length : 0;
 }
 
