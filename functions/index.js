@@ -3629,6 +3629,12 @@ function agruparPorData(nodes) {
 async function syncStateToSupabase(docId, patch) {
   if (!supabase || !docId || !patch || typeof patch !== "object") return;
   try {
+    const { data: existing } = await supabase
+      .from("sync_state")
+      .select("data_blob")
+      .eq("key", docId)
+      .maybeSingle();
+
     const cleanPatch = {};
     for (const [k, val] of Object.entries(patch)) {
       if (val == null) {
@@ -3642,6 +3648,14 @@ async function syncStateToSupabase(docId, patch) {
             continue;
           }
         } catch { /* ignore */ }
+        
+        // increment → lê valor atual + soma operand
+        if (val._methodName === "FieldValue.increment" || (val.operand !== undefined)) {
+          const operand = Number(val.operand || val._operand || 1);
+          const atual = Number((existing?.data_blob || {})[k] || 0);
+          cleanPatch[k] = atual + operand;
+          continue;
+        }
         continue;
       }
       if (typeof val === "object" && typeof val.toDate === "function") {
@@ -3651,12 +3665,6 @@ async function syncStateToSupabase(docId, patch) {
       cleanPatch[k] = val;
     }
     cleanPatch.updatedAt = new Date().toISOString();
-
-    const { data: existing } = await supabase
-      .from("sync_state")
-      .select("data_blob")
-      .eq("key", docId)
-      .maybeSingle();
 
     const merged = { ...(existing?.data_blob || {}), ...cleanPatch };
 
