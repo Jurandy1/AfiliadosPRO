@@ -1,0 +1,67 @@
+Index: src/platforms/dashboard/repositories/metricsRepository.js
+===================================================================
+--- src/platforms/dashboard/repositories/metricsRepository.js
++++ src/platforms/dashboard/repositories/metricsRepository.js
+@@ -1440,8 +1440,15 @@
+     const { real: comissaoReal, estimada: comissaoEst } = parseSubIdDailyComissaoFields(d);
+     const fat = Number(d.faturamento || 0);
+     const vendas = Number(d.qtd_itens || 0);
+     const pedidos = Number(d.pedidos || 0);
++
++    // [DEBUG TRACE]
++    if (data === "2026-06-20" && subid === "flare07") {
++      console.log(`[TRACE B] agregarPorDiaDeSubidSnapshot - subid_daily tem:`, {
++        comissaoReal, fat, vendas, d
++      });
++    }
+ 
+     porDia[data].comissoes += comissaoReal;
+     porDia[data].comissoes_estimadas = (porDia[data].comissoes_estimadas || 0) + comissaoEst;
+@@ -1728,8 +1735,13 @@
+   let dailyBreakdown = [];
+   if (includeDaily) {
+     dailyBreakdown = finalizarLinhasDiarias(porDia, settings);
++    
++    // [DEBUG TRACE]
++    const traceRow = dailyBreakdown.find(r => r.data === "2026-06-20");
++    console.log(`[TRACE C] Antes do alinhamento, dailyBreakdown tem flare07:`, traceRow?._bySubId?.["flare07"]);
++
+     if (alvoDaily?.comissao > 0) {
+       dailyBreakdown = alinharDailyBreakdownAoAlvo(dailyBreakdown, alvoDaily, (row) => {
+         const fin = calcSubIdFinanceiroMetrics(subIdComissaoParaLucro(row), row.gasto || 0);
+         const { _bySubId, ...rest } = row;
+@@ -1742,8 +1754,12 @@
+           _bySubId,
+           _alinhadoPainelShopee: true,
+         };
+       });
++      
++      // [DEBUG TRACE]
++      const traceRowA = dailyBreakdown.find(r => r.data === "2026-06-20");
++      console.log(`[TRACE D] Após o alinhamento, dailyBreakdown tem flare07:`, traceRowA?._bySubId?.["flare07"]);
+     }
+   }
+ 
+Index: src/platforms/dashboard/cache/dailyRangeCache.js
+===================================================================
+--- src/platforms/dashboard/cache/dailyRangeCache.js
++++ src/platforms/dashboard/cache/dailyRangeCache.js
+@@ -87,8 +87,11 @@
+     if (data.length < PAGE_SIZE) {
+       break;
+     }
+     from += PAGE_SIZE;
+   }
+   
+   // O código legado espera objetos que possivelmente têm 'id', e no Firebase o id era o documentId (ou a própria data).
+   // No Supabase, se não vier um 'id', adicionamos um campo 'id' pra não quebrar a lógica.
+-  return allData.map((row) => ({ id: row.data || row.id, ...row }));
++  const rows = allData.map((row) => ({ id: row.data || row.id, ...row }));
++  
++  // [DEBUG TRACE]
++  if (collectionName === "subid_daily") {
++     const flare07 = rows.filter(r => r.data === "2026-06-20" && r.subid === "flare07");
++     console.log(`[TRACE A] fetchByDataField retornou ${rows.length} linhas. Flare07 dia 20:`, flare07);
++  }
++  return rows;
+ }

@@ -13,10 +13,9 @@
  * invalidateDailyRangeCache() ou invalidateDailyRangeCache("subid_daily").
  */
 import { supabase } from "../../../services/supabase/client";
-import { fetchDataVersions } from "./dataVersions";
 
-const TTL_MS = 30_000;
-const MAX_SLOTS = 4;
+const TTL_MS = 60_000;
+const MAX_SLOTS = 6;
 
 const _caches = new Map();   // collectionName → Map<key, {data, ts}>
 const _inFlight = new Map(); // `${collectionName}|${key}` → Promise
@@ -66,22 +65,60 @@ export function invalidateDailyRangeCache(collectionName = null) {
  * Retorna array de objetos `{ id, ...data }`. NÃO retorna snapshot do Firestore.
  */
 async function fetchByDataField(collectionName, startDate, endDate) {
-  // Nota: subid_daily e clique_daily ainda não estão no Supabase, então retornarão array vazio
-  // se consultados até que o backfill dessas tabelas seja feito.
-  const { data, error } = await supabase
-    .from(collectionName)
-    .select("*")
-    .gte("data", startDate)
-    .lte("data", endDate);
-    
-  if (error) {
-    console.warn(`[Supabase] Erro ao buscar ${collectionName}:`, error.message);
-    return [];
+  let allData = [];
+  let from = 0;
+  const PAGE_SIZE = 1000;
+
+  while (true) {
+    let query = supabase
+      .from(collectionName)
+      .select("*")
+      .gte("data", startDate)
+      .lte("data", endDate);
+
+    // [CORREÇÃO]: A paginação do PostgreSQL não é determinística sem ORDER BY.
+    // Isso causava o pulo aleatório de linhas (como a do flare07 no dia 20)
+    // ao cruzar a página 1000.
+    query = query.order("data", { ascending: true });
+    if (collectionName === "subid_daily") {
+      query = query.order("subid", { ascending: true });
+    } else if (collectionName === "meta_ads_daily") {
+      query = query.order("nomeAnuncio", { ascending: true });
+    } else if (collectionName === "shopee_daily") {
+      // shopee_daily tem id ou apenas data
+    } else if (collectionName === "produto_daily") {
+      query = query.order("item_id", { ascending: true });
+    }
+
+    const { data, error } = await query.range(from, from + PAGE_SIZE - 1);
+
+    if (error) {
+      console.warn(`[Supabase] Erro ao buscar ${collectionName}:`, error.message);
+      return [];
+    }
+
+    if (!data || data.length === 0) {
+      break;
+    }
+
+    allData = allData.concat(data);
+
+    if (data.length < PAGE_SIZE) {
+      break;
+    }
+    from += PAGE_SIZE;
   }
-  
+
   // O código legado espera objetos que possivelmente têm 'id', e no Firebase o id era o documentId (ou a própria data).
   // No Supabase, se não vier um 'id', adicionamos um campo 'id' pra não quebrar a lógica.
-  return (data || []).map((row) => ({ id: row.data || row.id, ...row }));
+  const rows = allData.map((row) => ({ id: row.data || row.id, ...row }));
+
+  // [DEBUG TRACE]
+  if (collectionName === "subid_daily") {
+     const flare07 = rows.filter(r => r.data === "2026-06-20" && r.subid === "flare07");
+     console.log(`[TRACE A] fetchByDataField retornou ${rows.length} linhas. Flare07 dia 20:`, flare07);
+  }
+  return rows;
 }
 
 /**
@@ -113,14 +150,7 @@ async function cachedFetch(collectionName, key, fetchFn) {
 /** subid_daily com cache. */
 export async function fetchSubIdDailyForRange(startDate, endDate) {
   if (!startDate || !endDate) return [];
-
-  let versionSuffix = "";
-  try {
-    const v = await fetchDataVersions();
-    versionSuffix = `|${v.versionKey}`;
-  } catch {}
-
-  const key = `${startDate}|${endDate}${versionSuffix}`;
+  const key = `${startDate}|${endDate}`;
   return cachedFetch("subid_daily", key, () => fetchByDataField("subid_daily", startDate, endDate));
 }
 
@@ -138,14 +168,7 @@ export async function fetchCliqueDailyForRange(startDate, endDate) {
  */
 export async function fetchShopeeDailyForRange(startDate, endDate, isDailyMetricsVazio) {
   if (!startDate || !endDate) return [];
-
-  let versionSuffix = "";
-  try {
-    const v = await fetchDataVersions();
-    versionSuffix = `|${v.versionKey}`;
-  } catch {}
-
-  const key = `${startDate}|${endDate}${versionSuffix}`;
+  const key = `${startDate}|${endDate}`;
   return cachedFetch("shopee_daily", key, async () => {
     const { data, error } = await supabase
       .from("shopee_daily")

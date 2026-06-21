@@ -17,7 +17,7 @@ import {
 } from "./dailyGranularCache";
 
 const SMART_CACHE_ATIVO = String(import.meta.env.VITE_SMART_CACHE_META ?? "0") === "1";
-const EMPTY_SNAP = { empty: true, forEach: () => {}, docs: [] };
+const EMPTY_SNAP = { empty: true, forEach: () => { }, docs: [] };
 
 const L1_MAX_SLOTS = 4;
 const L1_TTL_MS = 5_000; // 5s — só pra evitar dupla-chamada no mesmo render

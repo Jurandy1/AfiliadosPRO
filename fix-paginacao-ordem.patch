@@ -1,0 +1,30 @@
+Index: src/platforms/dashboard/cache/dailyRangeCache.js
+===================================================================
+--- src/platforms/dashboard/cache/dailyRangeCache.js
++++ src/platforms/dashboard/cache/dailyRangeCache.js
+@@ -73,12 +73,22 @@
+   let from = 0;
+   const PAGE_SIZE = 1000;
+ 
+   while (true) {
+-    const { data, error } = await supabase
++    let query = supabase
+       .from(collectionName)
+       .select("*")
+       .gte("data", startDate)
+-      .lte("data", endDate)
+-      .range(from, from + PAGE_SIZE - 1);
++      .lte("data", endDate);
++      
++    // Para a paginação funcionar no PostgreSQL (Supabase), é OBRIGATÓRIO ter uma
++    // ordenação determinística, senão o banco pula linhas entre as páginas.
++    query = query.order("data", { ascending: true });
++    if (collectionName === "subid_daily") {
++      query = query.order("subid", { ascending: true });
++    } else if (collectionName === "meta_ads_daily") {
++      query = query.order("nomeAnuncio", { ascending: true });
++    }
++
++    const { data, error } = await query.range(from, from + PAGE_SIZE - 1);
+ 
+     if (error) {

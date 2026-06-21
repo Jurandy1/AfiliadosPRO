@@ -1442,6 +1442,13 @@ function agregarPorDiaDeSubidSnapshot(subidSnap, startStr, endStr) {
     const vendas = Number(d.qtd_itens || 0);
     const pedidos = Number(d.pedidos || 0);
 
+    // [DEBUG TRACE]
+    if (data === "2026-06-20" && subid === "flare07") {
+      console.log(`[TRACE B] agregarPorDiaDeSubidSnapshot - subid_daily tem:`, {
+        comissaoReal, fat, vendas, d
+      });
+    }
+
     porDia[data].comissoes += comissaoReal;
     porDia[data].comissoes_estimadas = (porDia[data].comissoes_estimadas || 0) + comissaoEst;
     porDia[data].faturamento += fat;
@@ -1728,6 +1735,11 @@ export async function finalizarSubIdPeriodoBundle(
   let dailyBreakdown = [];
   if (includeDaily) {
     dailyBreakdown = finalizarLinhasDiarias(porDia, settings);
+
+    // [DEBUG TRACE]
+    const traceRow = dailyBreakdown.find(r => r.data === "2026-06-20");
+    console.log(`[TRACE C] Antes do alinhamento, dailyBreakdown tem flare07:`, traceRow?._bySubId?.["flare07"]);
+
     if (alvoDaily?.comissao > 0) {
       dailyBreakdown = alinharDailyBreakdownAoAlvo(dailyBreakdown, alvoDaily, (row) => {
         const fin = calcSubIdFinanceiroMetrics(subIdComissaoParaLucro(row), row.gasto || 0);
@@ -1741,6 +1753,13 @@ export async function finalizarSubIdPeriodoBundle(
           _alinhadoPainelShopee: true,
         };
       });
+
+      // [DEBUG TRACE]
+      const traceRowA = dailyBreakdown.find(r => r.data === "2026-06-20");
+      console.log(`[TRACE D] Após o alinhamento, dailyBreakdown tem flare07:`, traceRowA?._bySubId?.["flare07"]);
+    } else {
+      // [DEBUG TRACE] -- mostra o motivo de o alinhamento ter sido pulado
+      console.log(`[TRACE D-skip] Alinhamento NÃO rodou. alvoDaily:`, alvoDaily);
     }
   }
 
