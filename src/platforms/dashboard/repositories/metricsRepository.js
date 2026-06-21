@@ -1720,6 +1720,8 @@ export async function finalizarSubIdPeriodoBundle(
     alvoPrecomputado,
   );
 
+  console.log("🔥 alignedRows cgtricot:", alignedRows.find(r => r.subid === "cgtricot" || r.id === "cgtricot"));
+
   const { gastoMeta, gastoPin } = extractGastoKpisFromTarget(kpiTarget);
   const subIds = finalizeSubIdRowsForPainel(alignedRows, { settings, gastoMeta, gastoPin })
     .map((r) => applySubIdFinanceiroRow(r));
@@ -1884,6 +1886,9 @@ async function enrichSubIdsComMetaNoPeriodo(subIds, startStr, endStr, settings =
   for (const [sid, cliques] of Object.entries(cliquesBySubId)) {
     if ((cliques || 0) > 0) ensureSid(sid);
   }
+
+  console.log("[DEBUG cliques] metaBySubId.cgtricot:", metaBySubId["cgtricot"]);
+  console.log("[DEBUG cliques] metaDailySnap.empty:", metaDailySnap.empty, "metaSource:", metaSource);
 
   return [...rowBySid.values()].map((r) => {
     const sid = normalizeSubId(r.subid || r.id || "");

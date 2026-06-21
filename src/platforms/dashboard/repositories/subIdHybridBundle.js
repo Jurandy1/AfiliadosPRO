@@ -191,6 +191,7 @@ export async function getSubIdHybridBundle(
   distribuirPinNoPorDia(porDia, gastoPinTotal, startStr, endStr);
   distribuirPinCliquesNoPorDia(porDia, pinBySubId, startStr, endStr);
 
+  console.log("🔥 DEBUG cgtricot:", subIdMap["cgtricot"]);
   const rows = rowsFromSubIdMap(subIdMap);
   return finalizarSubIdPeriodoBundle(rows, porDia, startDate, endDate, {
     settings,
