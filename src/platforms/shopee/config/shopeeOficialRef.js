@@ -73,7 +73,7 @@ let cachedPeriods = null;
 export async function loadShopeeOficialPeriodRef() {
   if (cachedPeriods) return cachedPeriods;
   try {
-    const { data: snap } = await supabase.from("sync_state").select("data_blob").eq("id", "shopee_oficial").single();
+    const { data: snap } = await supabase.from("sync_state").select("data_blob").eq("key", "shopee_oficial").single();
     if (snap) {
       const periods = snap.data_blob?.periods;
       if (periods && typeof periods === "object" && Object.keys(periods).length) {

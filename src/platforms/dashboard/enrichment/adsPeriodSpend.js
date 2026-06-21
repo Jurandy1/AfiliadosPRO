@@ -28,34 +28,18 @@ export function calcOverlapRatio(filterStart, filterEnd, itemStart, itemEnd) {
 
 function aggregateMetaFromDailySnap(snap) {
   const metaBySub = {};
-  console.log("[DEBUG v9] aggregateMetaFromDailySnap chamado, snap:", snap);
-  if (!snap?.forEach) {
-    console.log("[DEBUG v9] snap sem forEach, retornando vazio");
-    return metaBySub;
-  }
-  let linhasProcessadas = 0;
-  let semKey = 0;
+
+  if (!snap?.forEach) return metaBySub;
   snap.forEach((docSnap) => {
-    linhasProcessadas++;
     const m = docSnap.data() || {};
     const key = normalizeSubId(m.subid || m.nomeAnuncio || "");
-    if (!key) { semKey++; return; }
+    if (!key) return;
     if (!metaBySub[key]) metaBySub[key] = { ids: [], spend: 0, cliques_anuncio: 0 };
     const adId = m.ad_id || m.id || docSnap.id;
     if (adId) metaBySub[key].ids.push(adId);
     metaBySub[key].spend += Number(m.gasto ?? m.valorUsado ?? 0);
     metaBySub[key].cliques_anuncio += Number(m.cliques ?? m.cliquesTotal ?? 0);
   });
-  console.log(`[DEBUG v9] ${linhasProcessadas} linhas → ${Object.keys(metaBySub).length} subs com gasto (${semKey} sem key)`);
-  console.log("[DEBUG v9] metaBySub:", metaBySub);
-  console.log("[DEBUG v10A] tem canelada03?", "canelada03" in metaBySub, metaBySub["canelada03"]);
-  console.log("[DEBUG v10A] tem canelada07?", "canelada07" in metaBySub, metaBySub["canelada07"]);
-  console.log("[DEBUG v10A] tem canelada08?", "canelada08" in metaBySub, metaBySub["canelada08"]);
-  console.log("[DEBUG v10A] tem lgcanelada03?", "lgcanelada03" in metaBySub, metaBySub["lgcanelada03"]);
-  console.log("[DEBUG v10A] tem lgcanelada05?", "lgcanelada05" in metaBySub, metaBySub["lgcanelada05"]);
-  console.log("[DEBUG v10A] tem canelada02loc?", "canelada02loc" in metaBySub, metaBySub["canelada02loc"]);
-  console.log("[DEBUG v10A] tem flare01?", "flare01" in metaBySub, metaBySub["flare01"]);
-  console.log("[DEBUG v10A] TODAS as keys (sorted):", Object.keys(metaBySub).sort().join(", "));
   return metaBySub;
 }
 

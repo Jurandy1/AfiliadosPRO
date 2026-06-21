@@ -1,6 +1,6 @@
 import { supabase } from "../../../services/supabase/client";
 
-const VERSIONS_TTL_MS = 30_000;
+const VERSIONS_TTL_MS = 10_000;
 
 let cachedVersions = null;
 let cachedVersionsTs = 0;
@@ -36,8 +36,8 @@ export async function fetchDataVersions({ force = false } = {}) {
   _inFlightPromise = (async () => {
     try {
       const [shopeeSnap, metaSnap] = await Promise.all([
-        supabase.from("sync_state").select("data_blob").eq("id", "shopee_health").single().then(r => r.error ? { error: r.error } : r),
-        supabase.from("sync_state").select("data_blob").eq("id", "meta_health").single().then(r => r.error ? { error: r.error } : r),
+        supabase.from("sync_state").select("data_blob").eq("key", "shopee_health").single().then(r => r.error ? { error: r.error } : r),
+        supabase.from("sync_state").select("data_blob").eq("key", "meta_health").single().then(r => r.error ? { error: r.error } : r),
       ]);
 
       const shopeeData = shopeeSnap?.data?.data_blob || {};

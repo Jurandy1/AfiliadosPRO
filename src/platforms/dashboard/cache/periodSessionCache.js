@@ -23,6 +23,7 @@ export function buildPeriodCacheKey(kind, startDate, endDate, versionKey, settin
 }
 
 export async function getPeriodCacheEntry(key) {
+  return null; // Supabase: sem cache de período — dados sempre frescos
   if (isPeriodCacheDisabled()) return null;
   
   let entry = store.get(key);

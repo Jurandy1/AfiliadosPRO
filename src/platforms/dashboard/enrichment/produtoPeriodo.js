@@ -12,6 +12,7 @@ import {
   buildPinBySubForPeriod,
   buildPinBySubLifetime,
 } from "./adsPeriodSpend";
+import { invalidateMetaAdsDailyCache } from "../cache/metaAdsDailyCache";
 import { fetchCliqueDailyForRange } from "../cache/dailyRangeCache";
 
 const CADASTRO_SKIP_IDS = new Set(["", "_cauda_longa", "desconhecido"]);
@@ -79,7 +80,9 @@ export function mapProdutosPeriodoParaPainel(produtosPeriodo, cadastroPorId = {}
       conv_rate: cliques > 0 ? Number(p.qtd_itens || 0) / cliques : 0,
       roi: 0,
       investimento: 0,
-      sub_ids: p.sub_ids || cad.sub_ids || (cad.sub_id ? [cad.sub_id] : []),
+      sub_ids: (Array.isArray(p.sub_ids) && p.sub_ids.length > 0 ? p.sub_ids : null)
+        || (Array.isArray(cad.sub_ids) && cad.sub_ids.length > 0 ? cad.sub_ids : null)
+        || (cad.sub_id ? [cad.sub_id] : []),
       sub_id: p.sub_id || cad.sub_id || null,
       metaAdIds: cad.metaAdIds || [],
       pinterestAdIds: cad.pinterestAdIds || [],
@@ -99,11 +102,15 @@ export function buildCadastroIndex(produtos) {
   const byId = {};
   const byNome = {};
   (produtos || []).forEach((p) => {
-    const rawId = p.item_id || p.id_item || p.produto_id;
+    // Supabase usa doc_id ("item_58258532428") + id_item (numérico).
+    // Firestore legado usava item_id/produto_id. Indexa todos.
+    const rawId = p.doc_id || p.item_id || p.id_item || p.produto_id;
     if (rawId) {
       const s = String(rawId);
       byId[s] = p;
+      // Cria alias com e sem prefixo "item_"
       if (s.startsWith("item_")) byId[s.slice(5)] = p;
+      else byId[`item_${s}`] = p;
     }
     if (p.nome) byNome[p.nome] = p;
   });
@@ -136,7 +143,7 @@ function lookupCadastro(produtoId, nome, byId, byNome) {
 }
 
 function hasCadastro(cad) {
-  return Boolean(cad && (cad.id || cad.item_id || cad.id_item || cad.produto_id));
+  return Boolean(cad && (cad.doc_id || cad.id || cad.item_id || cad.id_item || cad.produto_id));
 }
 
 /** Mesmo produto pode aparecer 2x após merge cadastro + período. */
@@ -173,38 +180,7 @@ export function dedupeProdutoRows(rows) {
 export function enrichComMeta(produto, { metaBySub = {}, pinBySub = {} } = {}) {
   const p = produto || {};
   const isPeriodRow = p.fonte === "produto_daily";
-  const subIds = p.sub_ids || (p.sub_id ? [p.sub_id] : []);
-
-  // DEBUG v10B — captura só o produto Canelada Poliamida
-  const ehCaneladaPoliamida =
-    String(p.produto_id || p.id || "").includes("58258532428") ||
-    String(p.nome || "").toLowerCase().includes("canelada poliamida");
-
-  if (ehCaneladaPoliamida) {
-    console.log("[DEBUG v10B Canelada] produto:", {
-      produto_id: p.produto_id,
-      id: p.id,
-      doc_id: p.doc_id,
-      id_item: p.id_item,
-      nome: p.nome,
-      sub_ids_raw: p.sub_ids,
-      sub_id_raw: p.sub_id,
-      sub_ids_eh_array: Array.isArray(p.sub_ids),
-      sub_ids_length: Array.isArray(p.sub_ids) ? p.sub_ids.length : "N/A",
-      subIds_calculado: subIds,
-      subIds_length: subIds.length,
-      cad_keys: Object.keys(p).slice(0, 30),
-      metaBySub_size: Object.keys(metaBySub).length,
-    });
-
-    subIds.forEach((sid) => {
-      const norm = normalizeSubId(sid);
-      const match = metaBySub[norm];
-      console.log(`[DEBUG v10B Canelada] sub="${sid}" → norm="${norm}" → match?`, !!match, match);
-    });
-  }
-
-  const autoMeta = [];
+  const subIds = p.sub_ids || (p.sub_id ? [p.sub_id] : []);  const autoMeta = [];
   const autoPin = [];
   let autoInvest = 0;
 
@@ -226,15 +202,6 @@ export function enrichComMeta(produto, { metaBySub = {}, pinBySub = {} } = {}) {
   const investimento = isPeriodRow
     ? investimentoPeriodo
     : ((p.investimento && p.investimento > 0) ? p.investimento : investimentoPeriodo);
-
-  if (ehCaneladaPoliamida) {
-    console.log("[DEBUG v10B Canelada] RESULTADO:", {
-      autoMeta,
-      autoInvest,
-      metaAdIds_final: metaAdIds,
-      investimento_final: investimento,
-    });
-  }
 
   return {
     ...p,
@@ -284,6 +251,8 @@ export async function enrichProdutosPeriodoParaPainel(
     ? await getPinterest(importIds.pinterest).catch(() => [])
     : [];
 
+  // Força snapshot fresco do período atual (evita L1 stale de períodos anteriores)
+  invalidateMetaAdsDailyCache();
   let metaBySub = await buildMetaBySubForPeriod(startDate, endDate, metaAdsFallback);
   let pinBySub = buildPinBySubForPeriod(startDate, endDate, pinterest);
 
