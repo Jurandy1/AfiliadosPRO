@@ -1,0 +1,36 @@
+--- a/functions/index.js
++++ b/functions/index.js
+@@
+-const SHOPEE_SYNC_LOCK_TTL_MS = 540000;
++// TTL do lock deve ser MENOR que o timeoutSeconds das functions que o usam
++// (atualmente 540s/9min). Se forem iguais, uma execução que bate no timeout
++// do Cloud Run é morta ANTES do `finally` rodar, e o lock fica preso até
++// expirar sozinho — fazendo a próxima execução agendada também perder a
++// corrida pelo lock. Margem de ~60s evita esse vazamento.
++const SHOPEE_SYNC_LOCK_TTL_MS = 480000; // 8 min (60s de margem vs timeout de 540s)
+@@
+ exports.shopeeIncrementalSync = onSchedule(
+   {
+     schedule: "0 0,6,12,18 * * *",
+     timeZone: "America/Sao_Paulo",
+     secrets: ["SHOPEE_APP_ID", "SHOPEE_SECRET"],
+     timeoutSeconds: 540,
+     memory: "2GiB",
+   },
+@@
+ exports.shopeeRecentDaysSync = onSchedule(
+   {
+     // PATCH K: 6×/dia → 4×/dia (00h, 06h, 12h, 18h BRT).
+     // Mantém cobertura suficiente pra refletir vendas atrasadas no painel,
+     // mas economiza 33% das execuções diárias.
+-    schedule: "0 */6 * * *",
++    // PATCH L: deslocado +15min de shopeeIncrementalSync para evitar
++    // colisão no lock "shopee_lock" — antes ambas disparavam no mesmo
++    // minuto exato (0,6,12,18h), garantindo que uma sempre fosse
++    // "ignorada — lock ocupado" pela outra a cada ciclo.
++    schedule: "15 0,6,12,18 * * *",
+     timeZone: "America/Sao_Paulo",
+     secrets: ["SHOPEE_APP_ID", "SHOPEE_SECRET"],
+     timeoutSeconds: 540,
+     memory: "2GiB",
+   },

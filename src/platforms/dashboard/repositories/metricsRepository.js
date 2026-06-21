@@ -1058,7 +1058,6 @@ export async function getDashboardPanelModoAll(settings = {}) {
 export async function getUltimaAtualizacaoHoje() {
   const hojeStr = formatDateBRTYYYYMMDD();
   try {
-    const ref = doc(db, "shopee_daily", hojeStr);
     const { data: snapRow } = await supabase.from("shopee_daily").select("*").eq("data", hojeStr).single();
     if (!snapRow) return null;
     return snapRow.updatedAt?.toDate?.() || (snapRow.ultima_sync ? new Date(snapRow.ultima_sync) : null);
@@ -2164,13 +2163,13 @@ function perdasKpiCacheKey(startStr, endStr) {
 
 /** Soma KPIs de perdas a partir de shopee_daily (1 doc/dia — barato). */
 async function getPerdasKpiFromShopeeDaily(startStr, endStr) {
-    let snap;
+  let snap;
 
   if (startStr === endStr) {
-    const snapDoc = await getDoc(doc(db, "shopee_daily", startStr));
+    const { data: dayRow } = await supabase.from("shopee_daily").select("*").eq("data", startStr).single();
     snap = {
       forEach: (cb) => {
-        if (snapDoc.exists()) cb(snapDoc);
+        if (dayRow) cb({ id: dayRow.doc_id || dayRow.data || dayRow.key, data: () => dayRow });
       },
     };
   } else {

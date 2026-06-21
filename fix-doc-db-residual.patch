@@ -1,0 +1,37 @@
+--- a/src/platforms/dashboard/repositories/metricsRepository.js
++++ b/src/platforms/dashboard/repositories/metricsRepository.js
+@@ export async function getUltimaAtualizacaoHoje() {
+ export async function getUltimaAtualizacaoHoje() {
+   const hojeStr = formatDateBRTYYYYMMDD();
+   try {
+-    const ref = doc(db, "shopee_daily", hojeStr);
+     const { data: snapRow } = await supabase.from("shopee_daily").select("*").eq("data", hojeStr).single();
+     if (!snapRow) return null;
+     return snapRow.updatedAt?.toDate?.() || (snapRow.ultima_sync ? new Date(snapRow.ultima_sync) : null);
+   } catch (err) {
+     console.warn("[getUltimaAtualizacaoHoje] erro:", err);
+     return null;
+   }
+ }
+@@ async function getPerdasKpiFromShopeeDaily(startStr, endStr) {
+ async function getPerdasKpiFromShopeeDaily(startStr, endStr) {
+-    let snap;
++  let snap;
+ 
+   if (startStr === endStr) {
+-    const snapDoc = await getDoc(doc(db, "shopee_daily", startStr));
+-    snap = {
+-      forEach: (cb) => {
+-        if (snapDoc.exists()) cb(snapDoc);
+-      },
+-    };
++    const { data: dayRow } = await supabase.from("shopee_daily").select("*").eq("data", startStr).single();
++    snap = {
++      forEach: (cb) => {
++        if (dayRow) cb({ id: dayRow.doc_id || dayRow.data || dayRow.key, data: () => dayRow });
++      },
++    };
+   } else {
+     const { data: rangeData } = await supabase.from("shopee_daily").select("*").gte("data", startStr).lte("data", endStr);
+     snap = { forEach: (cb) => (rangeData||[]).forEach(d => cb({ id: d.doc_id || d.data || d.key, data: () => d })) };
+   }
