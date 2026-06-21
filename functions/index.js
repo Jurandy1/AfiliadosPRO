@@ -3398,6 +3398,7 @@ function agruparPorData(nodes) {
               comissao_estimada: 0,
               comissoes_pendentes: 0,
               comissoes_concluidas: 0,
+              comissoes_canceladas: 0,   // ← ADICIONA ESTA LINHA
               qtd_itens: 0,
               faturamento: 0,
               cliques: 0,
@@ -3417,6 +3418,8 @@ function agruparPorData(nodes) {
           produtoDayMap[produtoDocId].faturamento += gmv;
           if (statusClass === "concluida") {
             produtoDayMap[produtoDocId].comissoes_concluidas += itemCommEst;
+          } else if (statusClass === "cancelada") {
+            produtoDayMap[produtoDocId].comissoes_canceladas += itemCommEst;
           } else {
             produtoDayMap[produtoDocId].comissoes_pendentes += itemCommEst;
           }
