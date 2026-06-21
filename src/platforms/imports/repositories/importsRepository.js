@@ -230,7 +230,9 @@ export async function importShopeeClique(arrayBufferOrBuffers, options = {}) {
   }
 
   for (let i = 0; i < supabaseRows.length; i += 1000) {
-    await supabase.from("clique_daily").upsert(supabaseRows.slice(i, i + 1000));
+    await supabase.from("clique_daily").upsert(supabaseRows.slice(i, i + 1000), {
+      onConflict: "data,subid"
+    });
   }
 
   await supabase.from("importacoes").insert({
