@@ -2437,7 +2437,7 @@ export async function getDashboardPainelPorPeriodo(startDate, endDate, settings 
           pinBySubId,
           gastoPinTotal: gastoPin,
           versionKey,
-          alvoPrecomputado,
+          alvoPrecomputado: alvoPrecomputado || kpiTargetBundle,
         },
       ));
 
