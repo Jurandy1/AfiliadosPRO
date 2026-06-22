@@ -4131,6 +4131,7 @@ async function enriquecerProdutoDayMapComCliques(produtoDayMap, dateFilter) {
 
 /** Economia Firestore: pula write quando métricas de negócio não mudaram (exatidão preservada). */
 const FIRESTORE_SKIP_UNCHANGED = process.env.FIRESTORE_SKIP_UNCHANGED !== "0";
+const FIRESTORE_DISABLE_ANALYTICS_WRITES = true; // Desliga writes analíticos no Firestore (Custo Zero)
 const FIRESTORE_COMPARE_MONEY_EPS = 0.005;
 const METADATA_FIELDS_SKIP_COMPARE = new Set([
   "updatedAt",
@@ -4210,6 +4211,19 @@ async function applyPendingWrites(state, flush, pending, { merge = false, forceW
   if (!pending.length) return { gravados: 0, ignorados: 0 };
   
   const supabaseUpserts = [];
+  
+  // Se o flag master está ativo, NUNCA gravamos no Firebase (Custo ZERO).
+  if (FIRESTORE_DISABLE_ANALYTICS_WRITES) {
+    let gravados = 0;
+    for (const { ref, payload } of pending) {
+      supabaseUpserts.push({ tabela: ref.parent.id, id: ref.id, data: payload });
+      gravados++;
+    }
+    if (supabase && supabaseUpserts.length > 0) {
+      await syncToSupabase(supabase, supabaseUpserts, []).catch(console.error);
+    }
+    return { gravados, ignorados: 0 };
+  }
 
   if (!FIRESTORE_SKIP_UNCHANGED || forceWrite) {
     let gravados = 0;
