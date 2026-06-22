@@ -5021,7 +5021,7 @@ async function runShopeeSync({
 // ═══════════════════════════════════════════════════════════════════════════
 exports.shopeeIncrementalSync = onSchedule(
   {
-    schedule: "0 0,6,12,18 * * *",
+    schedule: "0 */2 * * *",
     timeZone: "America/Sao_Paulo",
     secrets: ["SHOPEE_APP_ID", "SHOPEE_SECRET"],
     timeoutSeconds: 540,
@@ -5113,14 +5113,10 @@ exports.shopeeDailyReconcile = onSchedule(
 // ═══════════════════════════════════════════════════════════════════════════
 exports.shopeeRecentDaysSync = onSchedule(
   {
-    // PATCH K: 6×/dia → 4×/dia (00h, 06h, 12h, 18h BRT).
-    // Mantém cobertura suficiente pra refletir vendas atrasadas no painel,
-    // mas economiza 33% das execuções diárias.
-    // PATCH L: deslocado +15min de shopeeIncrementalSync para evitar
-    // colisão no lock "shopee_lock" — antes ambas disparavam no mesmo
-    // minuto exato (0,6,12,18h), garantindo que uma sempre fosse
-    // "ignorada — lock ocupado" pela outra a cada ciclo.
-    schedule: "15 0,6,12,18 * * *",
+    // PATCH: 4×/dia → 12×/dia (a cada 2h).
+    // Mantém cobertura super fresca para as vendas de hoje e ontem.
+    // Deslocado +15min de shopeeIncrementalSync para evitar colisão no lock.
+    schedule: "15 */2 * * *",
     timeZone: "America/Sao_Paulo",
     secrets: ["SHOPEE_APP_ID", "SHOPEE_SECRET"],
     timeoutSeconds: 540,
@@ -5166,9 +5162,10 @@ exports.shopeeRecentDaysSync = onSchedule(
 // ═══════════════════════════════════════════════════════════════════════════
 exports.shopeeMonthAutoSync = onSchedule(
   {
-    // PATCH K: 4×/dia → 2×/dia (01:30, 13:30 BRT). Chunks do mês corrente
-    // não precisam rodar tantas vezes; reconcile diário + recent_3d cobrem.
-    schedule: "30 1,13 * * *",
+    // PATCH: Restaurado para 4×/dia (01:30, 07:30, 13:30, 19:30 BRT) 
+    // para garantir que cancelamentos e ajustes do mês inteiro apareçam
+    // rapidamente para o cliente sem estourar o limite de gravações do Firebase.
+    schedule: "30 1,7,13,19 * * *",
     timeZone: "America/Sao_Paulo",
     secrets: ["SHOPEE_APP_ID", "SHOPEE_SECRET"],
     timeoutSeconds: 540,
