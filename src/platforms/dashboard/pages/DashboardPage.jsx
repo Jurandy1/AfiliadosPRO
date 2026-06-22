@@ -979,15 +979,7 @@ export default function DashboardPage() {
       <div className="dashboard-page">
         <OperationalAlerts alerts={operationalAlerts} className="mb-0" />
 
-        <div className="flex justify-end mb-4 px-4 lg:px-0">
-          <button 
-            onClick={handleForceRefresh} 
-            title="Forçar atualização dos dados limpando o cache local"
-            className="flex items-center gap-2 px-3 py-1.5 text-sm bg-white border border-slate-300 rounded-md shadow-sm hover:bg-slate-50 text-slate-700 font-medium transition-colors"
-          >
-            🔄 Atualizar dados
-          </button>
-        </div>
+
 
         {periodoSemVendas && !atualizandoPeriodo && (
           <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-sm text-amber-900 flex items-start gap-2">
