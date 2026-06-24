@@ -1,6 +1,6 @@
 import { formatDateBRTYYYYMMDD } from "../../utils/dates";
 
-export const HOT_WINDOW_DAYS = 2;
+export const HOT_WINDOW_DAYS = 14;
 
 export function addDaysBRT(dateStr, n) {
   const [y, m, d] = dateStr.split("-").map(Number);

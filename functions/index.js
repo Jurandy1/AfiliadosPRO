@@ -4946,10 +4946,10 @@ async function runShopeeSync({
     // (logs 15/06: 13 rebuilds num dia, ~39k reads). Reconcile e backfill
     // continuam com throttle 0 porque são operações intencionais/explícitas.
     const throttleMs = (isReconcile || isBackfill)
-      ? 0
+      ? 60 * 60 * 1000
       : isManualRefresh
-        ? 15 * 60 * 1000
-        : 30 * 60 * 1000;
+        ? 30 * 60 * 1000
+        : 4 * 60 * 60 * 1000;
 
     try {
       const r = await refreshMonthlyBucketsForDates(db, diasRollup, { throttleMs });
@@ -7057,7 +7057,7 @@ exports.metaDailyRecentSync = onSchedule(
           cur = `${next.getUTCFullYear()}-${String(next.getUTCMonth() + 1).padStart(2, "0")}-${String(next.getUTCDate()).padStart(2, "0")}`;
         }
         try {
-          await refreshMonthlyBucketsForDates(db, dias, { throttleMs: 30 * 60 * 1000 });
+          await refreshMonthlyBucketsForDates(db, dias, { throttleMs: 4 * 60 * 60 * 1000 });
         } catch (err) {
           console.warn("[monthlyRollup/metaRecent] falhou:", err?.message || err);
         }
@@ -7098,7 +7098,7 @@ exports.metaDailyReconcile = onSchedule(
           cur = `${next.getUTCFullYear()}-${String(next.getUTCMonth() + 1).padStart(2, "0")}-${String(next.getUTCDate()).padStart(2, "0")}`;
         }
         try {
-          await refreshMonthlyBucketsForDates(db, dias, { throttleMs: 0 });
+          await refreshMonthlyBucketsForDates(db, dias, { throttleMs: 6 * 60 * 60 * 1000 });
         } catch (err) {
           console.warn("[monthlyRollup/metaReconcile] falhou:", err?.message || err);
         }
