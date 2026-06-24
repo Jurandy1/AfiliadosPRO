@@ -39,6 +39,7 @@ if (SUPABASE_URL && SUPABASE_KEY) {
 const { FieldValue } = admin.firestore;
 const { normalizeSubId } = require("./lib/normalizeSubId");
 const { refreshMonthlyBucketsForDates } = require("./lib/monthlyRollup");
+const { registrarSyncEvent } = require("./lib/syncPollingDetector");
 const {
   extrairTermosBuscaGarimpo,
   scoreRelevancia,
@@ -4951,14 +4952,21 @@ async function runShopeeSync({
         ? 30 * 60 * 1000
         : 4 * 60 * 60 * 1000;
 
-    try {
-      const r = await refreshMonthlyBucketsForDates(db, diasRollup, { throttleMs });
-      if (r?.length) {
-        const summary = r.map((x) => x.skipped ? `${x.monthKey}(skip)` : x.monthKey).join(", ");
-        console.log(`[monthlyRollup] ${label}:`, summary);
+    // PATCH 2026-06-24: rebuild de buckets Firestore desativado por padrão.
+    // Buckets painel_resumo/subid_mensal/produto_mensal são gravados mas
+    // ninguém lê (loadMonthlyBucketData retorna null em src/.../monthlyBucketPanel.js:413).
+    // Dashboard lê do Supabase em tempo real. Para reativar:
+    //   firebase functions:secrets:set ENABLE_MONTHLY_ROLLUP=true
+    if (process.env.ENABLE_MONTHLY_ROLLUP === "true") {
+      try {
+        const r = await refreshMonthlyBucketsForDates(db, diasRollup, { throttleMs });
+        if (r?.length) {
+          const summary = r.map((x) => x.skipped ? `${x.monthKey}(skip)` : x.monthKey).join(", ");
+          console.log(`[monthlyRollup] ${label}:`, summary);
+        }
+      } catch (err) {
+        console.warn("[monthlyRollup] falhou:", err?.message || err);
       }
-    } catch (err) {
-      console.warn("[monthlyRollup] falhou:", err?.message || err);
     }
   }
   if (importacaoId && !(allNodes.length === 0 && label === "incremental_cursor")) {
@@ -4966,6 +4974,14 @@ async function runShopeeSync({
   }
 
   console.log(`[shopee] fim ${label} | nodes=${allNodes.length} | produtos=${prodsGravados} | shopee_daily=${dailyGravados} | subid_daily=${subIdDailyGravados} | produto_daily=${produtoDailyGravados} | log_perdas=${perdasGravadas} (removidas=${perdasRemovidas}) | writes_omitidos=${state.skipped || 0} | ${Date.now() - startedAt}ms`);
+
+  // PATCH FASE 2: detector de polling — registra cada sync no Supabase
+  registrarSyncEvent(supabase, {
+    plataforma: "shopee",
+    label,
+    nodes: allNodes.length,
+    duracaoMs: Date.now() - startedAt,
+  }).catch(() => null);
 
   return {
     importacaoId,
@@ -6990,6 +7006,14 @@ async function runMetaDailySync({ daysBack }) {
     await bumpDailyVersionsManifest(dates, "meta");
   }
 
+  // PATCH FASE 2: detector de polling — registra cada sync no Supabase
+  registrarSyncEvent(supabase, {
+    plataforma: "meta",
+    label: `daysBack_${days}`,
+    nodes: totalRows,
+    duracaoMs: elapsed,
+  }).catch(() => null);
+
   return {
     range: { since, until, daysBack: days },
     linhas: totalRows,
@@ -7056,10 +7080,12 @@ exports.metaDailyRecentSync = onSchedule(
           const next = new Date(Date.UTC(y, m - 1, d + 1));
           cur = `${next.getUTCFullYear()}-${String(next.getUTCMonth() + 1).padStart(2, "0")}-${String(next.getUTCDate()).padStart(2, "0")}`;
         }
-        try {
-          await refreshMonthlyBucketsForDates(db, dias, { throttleMs: 4 * 60 * 60 * 1000 });
-        } catch (err) {
-          console.warn("[monthlyRollup/metaRecent] falhou:", err?.message || err);
+        if (process.env.ENABLE_MONTHLY_ROLLUP === "true") {
+          try {
+            await refreshMonthlyBucketsForDates(db, dias, { throttleMs: 4 * 60 * 60 * 1000 });
+          } catch (err) {
+            console.warn("[monthlyRollup/metaRecent] falhou:", err?.message || err);
+          }
         }
       }
     } catch (e) {
@@ -7097,10 +7123,12 @@ exports.metaDailyReconcile = onSchedule(
           const next = new Date(Date.UTC(y, m - 1, d + 1));
           cur = `${next.getUTCFullYear()}-${String(next.getUTCMonth() + 1).padStart(2, "0")}-${String(next.getUTCDate()).padStart(2, "0")}`;
         }
-        try {
-          await refreshMonthlyBucketsForDates(db, dias, { throttleMs: 6 * 60 * 60 * 1000 });
-        } catch (err) {
-          console.warn("[monthlyRollup/metaReconcile] falhou:", err?.message || err);
+        if (process.env.ENABLE_MONTHLY_ROLLUP === "true") {
+          try {
+            await refreshMonthlyBucketsForDates(db, dias, { throttleMs: 6 * 60 * 60 * 1000 });
+          } catch (err) {
+            console.warn("[monthlyRollup/metaReconcile] falhou:", err?.message || err);
+          }
         }
       }
     } catch (e) {
