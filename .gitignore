@@ -27,3 +27,5 @@ firebase-adminsdk*.json
 projetoafiliado*firebase*.json 
  
 # ===== SEGURANCA - NUNCA COMMITAR ===== 
+
+downloaded-logs-*.json
