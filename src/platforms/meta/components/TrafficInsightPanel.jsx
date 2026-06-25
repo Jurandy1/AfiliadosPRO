@@ -452,7 +452,13 @@ function CampaignsBySection({ blocos }) {
               <span className="text-[11px] text-slate-400 font-semibold">({itens.length})</span>
               <div className="flex-1 h-px bg-slate-200 ml-2" />
             </div>
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+            <div 
+              className={`grid gap-4 items-start ${
+                itens.length === 1 ? "grid-cols-1" :
+                itens.length === 2 ? "grid-cols-1 lg:grid-cols-2" :
+                "grid-cols-1 lg:grid-cols-2 xl:grid-cols-3"
+              }`}
+            >
               {itens.map((b, i) => (
                 <CampaignDetailCard key={`${b.nome}-${i}`} bloco={b} />
               ))}

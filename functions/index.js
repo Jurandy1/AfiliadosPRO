@@ -8202,3 +8202,17 @@ exports.shopeeBackfillRange = onRequest(
 // === Função temporária de contagem (REMOVER APÓS USO) ===
 exports.contarDocs = require("./admin/contarDocs").contarDocs;
 exports.rebuildMonthlyBuckets = require("./admin/rebuildMonthlyBuckets").rebuildMonthlyBuckets;
+
+// === AUTOMATIZAÇÃO DO CLAUDE (10:00 BRT) ===
+const { runClaudeAnalysis } = require('./run_claude_analysis.cjs');
+exports.claudeDailyAnalysis = onSchedule(
+  {
+    schedule: 'every day 10:00',
+    timeZone: 'America/Sao_Paulo',
+    timeoutSeconds: 300,
+  },
+  async () => {
+    console.log('[claudeDailyAnalysis] Iniciando analise diaria automatica...');
+    await runClaudeAnalysis();
+  }
+);

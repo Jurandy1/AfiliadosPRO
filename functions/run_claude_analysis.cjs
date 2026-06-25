@@ -2,93 +2,180 @@ const { createClient } = require('@supabase/supabase-js');
 const fs = require('fs');
 const path = require('path');
 
-const envPath = path.join(__dirname, '../.env.local');
-const txt = fs.existsSync(envPath) ? fs.readFileSync(envPath, 'utf8') : fs.readFileSync(path.join(__dirname, '../.env'), 'utf8');
-const env = {};
-txt.split('\n').forEach(l => {
-  const i = l.indexOf('=');
-  if (i > 0) env[l.substring(0, i).trim()] = l.substring(i + 1).trim().replace(/['"\r]/g, '');
-});
+const envPathLocal = path.join(__dirname, '../.env.local');
+const envPathProd = path.join(__dirname, '../.env');
+const env = { ...process.env }; // Start with process.env for Cloud Functions
 
-const sup = createClient(env.VITE_SUPABASE_URL, env.VITE_SUPABASE_SERVICE_ROLE_KEY || env.VITE_SUPABASE_ANON_KEY);
+if (fs.existsSync(envPathLocal)) {
+    const txt = fs.readFileSync(envPathLocal, 'utf8');
+    txt.split('\n').forEach(l => {
+      const i = l.indexOf('=');
+      if (i > 0) env[l.substring(0, i).trim()] = l.substring(i + 1).trim().replace(/['"\r]/g, '');
+    });
+} else if (fs.existsSync(envPathProd)) {
+    const txt = fs.readFileSync(envPathProd, 'utf8');
+    txt.split('\n').forEach(l => {
+      const i = l.indexOf('=');
+      if (i > 0) env[l.substring(0, i).trim()] = l.substring(i + 1).trim().replace(/['"\r]/g, '');
+    });
+}
+
+const sup = createClient(env.VITE_SUPABASE_URL || env.SUPABASE_URL, env.VITE_SUPABASE_SERVICE_ROLE_KEY || env.VITE_SUPABASE_ANON_KEY || env.SUPABASE_SERVICE_ROLE_KEY);
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
 const MODEL_NAME = "claude-sonnet-4-6";
 
 async function getAggregatedData() {
-    // Get last 2 days of data
-    const today = new Date();
-    today.setUTCHours(0,0,0,0);
-    const yesterday = new Date(today);
-    yesterday.setUTCDate(today.getUTCDate() - 1);
-    const twoDaysAgo = new Date(today);
-    twoDaysAgo.setUTCDate(today.getUTCDate() - 2);
+    const todayReal = new Date();
+    todayReal.setUTCHours(0,0,0,0);
+    
+    // "hoje" for analysis purposes is yesterday (D-1) due to Shopee delay.
+    const hojeDate = new Date(todayReal);
+    hojeDate.setUTCDate(todayReal.getUTCDate() - 1);
+    const dataHoje = hojeDate.toISOString().split('T')[0];
 
-    const dataA = twoDaysAgo.toISOString().split('T')[0];
-    const dataB = yesterday.toISOString().split('T')[0];
-    const dataC = today.toISOString().split('T')[0];
+    // "ontem" for analysis purposes is D-2
+    const ontemDate = new Date(hojeDate);
+    ontemDate.setUTCDate(hojeDate.getUTCDate() - 1);
+    const dataOntem = ontemDate.toISOString().split('T')[0];
+
+    // 7 days ago relative to D-1
+    const sevenDaysAgo = new Date(hojeDate);
+    sevenDaysAgo.setUTCDate(hojeDate.getUTCDate() - 7);
+    const data7Dias = sevenDaysAgo.toISOString().split('T')[0];
 
     // Fetch comissoes (Shopee)
     const { data: subidData } = await sup.from('subid_daily')
         .select('*')
-        .gte('data', dataA)
-        .lte('data', dataB);
+        .gte('data', data7Dias)
+        .lte('data', dataHoje);
 
     // Fetch gasto (Meta)
     const { data: metaData } = await sup.from('meta_ads_daily')
         .select('*')
-        .gte('data', dataA)
-        .lte('data', dataB);
+        .gte('data', data7Dias)
+        .lte('data', dataHoje);
 
-    const campanhas = {};
-
-    // Aggregate Meta
-    (metaData || []).forEach(row => {
-        if (!row.subid) return;
-        if (!campanhas[row.subid]) campanhas[row.subid] = { subid: row.subid, gasto: 0, cliques: 0, comissao: 0 };
-        campanhas[row.subid].gasto += Number(row.gasto || 0);
-        campanhas[row.subid].cliques += Number(row.cliques || 0);
+    // Fetch active subids
+    const { data: activeAds } = await sup.from('meta_ads').select('*').eq('status', 'Ativo');
+    const activeAdsMap = {};
+    (activeAds || []).forEach(a => {
+        activeAdsMap[a.subid_vinculado] = a;
     });
 
-    // Aggregate Shopee
-    (subidData || []).forEach(row => {
-        if (!row.subid) return;
-        if (!campanhas[row.subid]) campanhas[row.subid] = { subid: row.subid, gasto: 0, cliques: 0, comissao: 0 };
-        campanhas[row.subid].comissao += Number(row.comissoes_estimadas || row.comissoes || 0);
+    const metricas = [];
+
+    // Pre-calculate daily metrics (join meta_ads_daily + subid_daily)
+    const dates = [];
+    for (let d = new Date(sevenDaysAgo); d <= hojeDate; d.setUTCDate(d.getUTCDate() + 1)) {
+        dates.push(d.toISOString().split('T')[0]);
+    }
+
+    Object.keys(activeAdsMap).forEach(subid => {
+        const a = activeAdsMap[subid];
+        const fase = a.fase || 'TESTE';
+        const dataInicio = a.data_inicio_fase || dataHoje;
+
+        const subidMetrics = dates.map(dt => {
+            const m = (metaData || []).find(x => x.subid === subid && x.data === dt) || { gasto: 0, cliques: 0 };
+            const s = (subidData || []).find(x => x.subid === subid && x.data === dt) || { comissoes_estimadas: 0, pedidos: 0, vendas_diretas: 0 };
+            
+            const gasto = Number(m.gasto || 0);
+            const comissao = Number(s.comissoes_estimadas || s.comissoes || 0);
+            const roi = gasto > 0 ? ((comissao - gasto) / gasto) * 100 : (comissao > 0 ? 100 : null);
+            
+            const timeDiff = new Date(dt).getTime() - new Date(dataInicio).getTime();
+            const dia_fase = Math.floor(timeDiff / (1000 * 3600 * 24)) + 1;
+
+            return {
+                subid,
+                data: dt,
+                gasto,
+                comissao,
+                cliques: Number(m.cliques || 0),
+                roi,
+                fase,
+                dia_fase
+            };
+        });
+        
+        metricas.push(...subidMetrics.filter(m => new Date(m.data) >= new Date(dataInicio)));
     });
 
-    // Fetch active subids to filter out paused campaigns
-    const { data: activeAds } = await sup.from('meta_ads').select('subid_vinculado').eq('status', 'Ativo');
-    const activeSubids = new Set((activeAds || []).map(a => a.subid_vinculado));
+    const resultados = [];
 
-    return Object.values(campanhas)
-      .filter(c => (c.gasto > 0 || c.comissao > 0) && activeSubids.has(c.subid))
-      .map(c => {
-        c.roi = c.gasto > 0 ? ((c.comissao - c.gasto) / c.gasto) * 100 : (c.comissao > 0 ? 100 : 0);
-        c.roi = c.roi.toFixed(2) + '%';
-        c.gasto = c.gasto.toFixed(2);
-        c.comissao = c.comissao.toFixed(2);
-        return c;
+    Object.keys(activeAdsMap).forEach(subid => {
+        const mSubid = metricas.filter(m => m.subid === subid);
+        
+        const mHoje = mSubid.find(m => m.data === dataHoje);
+        const mOntem = mSubid.find(m => m.data === dataOntem);
+        
+        if (!mHoje) return; // No data for D-1, skip
+
+        const roi_hoje = mHoje.roi || 0;
+        const roi_ontem = mOntem ? (mOntem.roi || 0) : 0;
+        
+        const valid7 = mSubid.filter(m => m.roi !== null);
+        const dias_abaixo_30 = valid7.filter(m => m.roi < 30).length;
+        const roi_medio_7d = valid7.length > 0 ? (valid7.reduce((acc, curr) => acc + curr.roi, 0) / valid7.length) : 0;
+
+        const fase = mHoje.fase;
+        const dia_fase = mHoje.dia_fase;
+        let decisao = 'INDEFINIDO';
+
+        if (fase === 'TESTE') {
+            if (dia_fase === 1) {
+                decisao = roi_hoje < -70 ? 'PAUSAR' : 'AGUARDAR';
+            } else if (dia_fase === 2) {
+                if (roi_hoje < -70) decisao = 'PAUSAR';
+                else if (roi_hoje < roi_ontem) decisao = 'ATENCAO';
+                else decisao = 'AGUARDAR';
+            } else if (dia_fase === 3) {
+                if (roi_hoje >= -10) decisao = 'AGUARDAR';
+                else if (roi_hoje < -30) decisao = 'PAUSAR';
+                else decisao = 'ATENCAO';
+            } else if (dia_fase >= 4) {
+                decisao = roi_hoje >= 0 ? 'APROVAR' : 'PAUSAR';
+            }
+        } else if (fase === 'MONITORAMENTO') {
+            if (dias_abaixo_30 >= 5) decisao = 'PAUSAR';
+            else if (dias_abaixo_30 >= 3) decisao = 'ATENCAO';
+            else decisao = 'MANTER';
+        }
+
+        resultados.push({
+            subid,
+            fase,
+            dia_fase,
+            roi_hoje: parseFloat(roi_hoje.toFixed(2)),
+            roi_ontem: parseFloat(roi_ontem.toFixed(2)),
+            dias_abaixo_30,
+            roi_medio_7d: parseFloat(roi_medio_7d.toFixed(2)),
+            gasto_hoje: mHoje.gasto,
+            comissao_hoje: mHoje.comissao,
+            cliques_hoje: mHoje.cliques,
+            decisao
+        });
     });
+
+    return resultados;
 }
 
 async function runClaudeAnalysis() {
-    // Definimos a "data" do relatório como a data de hoje (baseada no momento de execução)
     const today = new Date();
     today.setUTCHours(0,0,0,0);
     const dataRelatorio = today.toISOString().split('T')[0];
 
-    // 1. Checa se já existe relatório pra hoje para não gastar tokens
     const { data: analiseExistente } = await sup.from('ai_daily_analysis')
         .select('id')
         .eq('data', dataRelatorio)
         .single();
 
     if (analiseExistente) {
-        console.log(`[INFO] O relatório de hoje (${dataRelatorio}) já foi gerado. Pulando para economizar tokens.`);
+        console.log(`[INFO] O relatório de hoje (${dataRelatorio}) já foi gerado.`);
         return;
     }
 
-    console.log("Coletando dados do Supabase...");
+    console.log("Coletando dados e calculando decisões...");
     const dados = await getAggregatedData();
     console.log(`Encontradas ${dados.length} campanhas com dados recentes.`);
     
@@ -97,20 +184,38 @@ async function runClaudeAnalysis() {
         return;
     }
 
-    // Limit to top 5 for the test to avoid huge prompt
-    const top5 = dados.sort((a,b) => b.gasto - a.gasto).slice(0, 5);
-    
-    const dadosTexto = JSON.stringify(top5, null, 2);
+    // Processar auto-updates (Passo 4)
+    for (const d of dados) {
+        if (d.decisao === 'APROVAR') {
+            console.log(`[AUTO] Promovendo subid ${d.subid} para MONITORAMENTO.`);
+            await sup.from('meta_ads').update({
+                fase: 'MONITORAMENTO',
+                data_inicio_fase: dataRelatorio,
+                aprovada_em: dataRelatorio
+            }).eq('subid_vinculado', d.subid);
+        } else if (d.decisao === 'PAUSAR') {
+            console.log(`[AUTO] Pausando subid ${d.subid} por baixa performance.`);
+            await sup.from('meta_ads').update({
+                fase: 'PAUSADA',
+                status: 'Pausado'
+            }).eq('subid_vinculado', d.subid);
+        }
+    }
 
-    const systemPrompt = `Você é um Analista de Tráfego Sênior. 
-Abaixo estão os dados agregados das campanhas ativas nos últimos 2 dias fechados.
-O 'gasto' vem da Meta (Facebook Ads) e a 'comissao' vem da plataforma de afiliados (Shopee).
-IMPORTANTE: Como os dados da Shopee possuem 1 dia de atraso (delay), a análise exclui o dia de hoje e foca estritamente no consolidado de Ontem e Anteontem (D-1 e D-2). Por favor, deixe essa regra clara logo no começo do seu Resumo Geral com uma breve nota.
-Seu objetivo é analisar os dados (Custos, Cliques, Comissões e ROI) e entregar um relatório matinal direto ao ponto:
-1. Faça um resumo da situação.
-2. Destaque quais campanhas estão com ROI crítico (prejuízo grande) e sugira se devem ser pausadas ou não.
-3. Destaque as campanhas validadas que estão performando bem.
-Seja breve e direto ao ponto. Use Markdown estruturado com tabelas, alertas e emojis apropriados.`;
+    // Limit to top 15 for Claude to analyze
+    const top = dados.sort((a,b) => b.gasto_hoje - a.gasto_hoje).slice(0, 15);
+    const dadosTexto = JSON.stringify(top, null, 2);
+
+    const systemPrompt = `Você é um Consultor de Tráfego Sênior. 
+Abaixo estão os dados agregados das campanhas ativas.
+IMPORTANTE: A análise foca no dia fechado de ontem (D-1) porque a Shopee tem 1 dia de atraso (deixe isso claro no início do Resumo).
+O sistema interno JÁ CALCULOU matematicamente a decisão para cada SubID (campo "decisao").
+As decisões possíveis são: PAUSAR, ATENCAO, AGUARDAR, APROVAR, MANTER. O sistema inclusive já efetuou pausas nas campanhas necessárias.
+
+Seu objetivo é gerar um relatório matinal explicando a situação em linguagem natural:
+1. Faça um resumo da situação do portfólio.
+2. Explique os motivos das decisões tomadas pelo sistema. Confirme ou justifique as razões pelas quais o sistema recomendou (ex: se pausou, explique o porquê baseado no ROI e Fase. Se aprovou, comemore a promoção para Escala).
+3. Seja breve e direto ao ponto. Use Markdown estruturado com tabelas, alertas e emojis apropriados. Use a mesma taxonomia (Ranking de Campanhas, etc) para se integrar bem à interface.`;
 
     console.log(`Enviando para o ${MODEL_NAME}...`);
     
@@ -124,11 +229,11 @@ Seja breve e direto ao ponto. Use Markdown estruturado com tabelas, alertas e em
             },
             body: JSON.stringify({
                 model: MODEL_NAME,
-                max_tokens: 1024,
+                max_tokens: 1500,
                 temperature: 0.2,
                 system: systemPrompt,
                 messages: [
-                    { role: "user", content: "Analise estas campanhas:\n" + dadosTexto }
+                    { role: "user", content: "Analise estas campanhas e explique as decisões tomadas pelo sistema:\n" + dadosTexto }
                 ]
             })
         });
@@ -145,7 +250,6 @@ Seja breve e direto ao ponto. Use Markdown estruturado com tabelas, alertas e em
         console.log(analiseGerada);
         console.log("\n============================\n");
 
-        // 2. Salva no Supabase
         const { error: insertError } = await sup.from('ai_daily_analysis').insert({
             data: dataRelatorio,
             analise_markdown: analiseGerada,
@@ -163,4 +267,9 @@ Seja breve e direto ao ponto. Use Markdown estruturado com tabelas, alertas e em
     }
 }
 
-runClaudeAnalysis();
+module.exports = { runClaudeAnalysis };
+
+// Se o script for executado diretamente pelo terminal
+if (require.main === module) {
+    runClaudeAnalysis();
+}
