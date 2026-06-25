@@ -979,8 +979,6 @@ export default function DashboardPage() {
       <div className="dashboard-page">
         <OperationalAlerts alerts={operationalAlerts} className="mb-0" />
 
-
-
         {periodoSemVendas && !atualizandoPeriodo && (
           <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-sm text-amber-900 flex items-start gap-2">
             <Clock size={16} className="shrink-0 mt-0.5" />

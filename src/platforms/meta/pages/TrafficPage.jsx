@@ -276,7 +276,6 @@ export default function TrafficPage({ section = "overview", activeRoute = "traff
               )}
             </div>
           </div>
-          <TrafficInsightPanel meta={meta} pins={pins} thresholds={thresholds} />
         </>
       )}
 
