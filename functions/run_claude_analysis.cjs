@@ -30,12 +30,14 @@ async function getAggregatedData() {
     // Fetch comissoes (Shopee)
     const { data: subidData } = await sup.from('subid_daily')
         .select('*')
-        .gte('data', dataA);
+        .gte('data', dataA)
+        .lte('data', dataB);
 
     // Fetch gasto (Meta)
     const { data: metaData } = await sup.from('meta_ads_daily')
         .select('*')
-        .gte('data', dataA);
+        .gte('data', dataA)
+        .lte('data', dataB);
 
     const campanhas = {};
 
