@@ -103,8 +103,9 @@ async function runClaudeAnalysis() {
     const dadosTexto = JSON.stringify(top5, null, 2);
 
     const systemPrompt = `Você é um Analista de Tráfego Sênior. 
-Abaixo estão os dados agregados das campanhas ativas nos últimos 2 dias.
+Abaixo estão os dados agregados das campanhas ativas nos últimos 2 dias fechados.
 O 'gasto' vem da Meta (Facebook Ads) e a 'comissao' vem da plataforma de afiliados (Shopee).
+IMPORTANTE: Como os dados da Shopee possuem 1 dia de atraso (delay), a análise exclui o dia de hoje e foca estritamente no consolidado de Ontem e Anteontem (D-1 e D-2). Por favor, deixe essa regra clara logo no começo do seu Resumo Geral com uma breve nota.
 Seu objetivo é analisar os dados (Custos, Cliques, Comissões e ROI) e entregar um relatório matinal direto ao ponto:
 1. Faça um resumo da situação.
 2. Destaque quais campanhas estão com ROI crítico (prejuízo grande) e sugira se devem ser pausadas ou não.

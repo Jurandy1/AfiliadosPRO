@@ -73,7 +73,7 @@ function HeaderHero({ data, modelo, onRefresh, refreshing, onCopy, copied, onTog
               </span>
             </div>
             <p className="text-indigo-100/80 text-xs md:text-sm mt-0.5 font-medium">
-              Diagnóstico diário do seu portfólio — gerado por IA
+              Diagnóstico do portfólio gerado por IA — focado nos 2 últimos dias fechados (D-1 e D-2)
             </p>
           </div>
         </div>
