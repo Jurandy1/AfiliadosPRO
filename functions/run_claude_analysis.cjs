@@ -54,7 +54,13 @@ async function getAggregatedData() {
         campanhas[row.subid].comissao += Number(row.comissoes_estimadas || row.comissoes || 0);
     });
 
-    return Object.values(campanhas).filter(c => c.gasto > 0 || c.comissao > 0).map(c => {
+    // Fetch active subids to filter out paused campaigns
+    const { data: activeAds } = await sup.from('meta_ads').select('subid_vinculado').eq('status', 'Ativo');
+    const activeSubids = new Set((activeAds || []).map(a => a.subid_vinculado));
+
+    return Object.values(campanhas)
+      .filter(c => (c.gasto > 0 || c.comissao > 0) && activeSubids.has(c.subid))
+      .map(c => {
         c.roi = c.gasto > 0 ? ((c.comissao - c.gasto) / c.gasto) * 100 : (c.comissao > 0 ? 100 : 0);
         c.roi = c.roi.toFixed(2) + '%';
         c.gasto = c.gasto.toFixed(2);
