@@ -4952,21 +4952,16 @@ async function runShopeeSync({
         ? 30 * 60 * 1000
         : 4 * 60 * 60 * 1000;
 
-    // PATCH 2026-06-24: rebuild de buckets Firestore desativado por padrão.
-    // Buckets painel_resumo/subid_mensal/produto_mensal são gravados mas
-    // ninguém lê (loadMonthlyBucketData retorna null em src/.../monthlyBucketPanel.js:413).
-    // Dashboard lê do Supabase em tempo real. Para reativar:
-    //   firebase functions:secrets:set ENABLE_MONTHLY_ROLLUP=true
-    if (process.env.ENABLE_MONTHLY_ROLLUP === "true") {
-      try {
-        const r = await refreshMonthlyBucketsForDates(db, diasRollup, { throttleMs });
-        if (r?.length) {
-          const summary = r.map((x) => x.skipped ? `${x.monthKey}(skip)` : x.monthKey).join(", ");
-          console.log(`[monthlyRollup] ${label}:`, summary);
-        }
-      } catch (err) {
-        console.warn("[monthlyRollup] falhou:", err?.message || err);
+    // REVERTED PATCH 2026-06-26: Rollup mensal reativado, agora consultando Supabase 
+    // diretamente para evitar estouro de limite de leitura no Firestore.
+    try {
+      const r = await refreshMonthlyBucketsForDates(db, supabase, diasRollup, { throttleMs });
+      if (r?.length) {
+        const summary = r.map((x) => x.skipped ? `${x.monthKey}(skip)` : x.monthKey).join(", ");
+        console.log(`[monthlyRollup] ${label}:`, summary);
       }
+    } catch (err) {
+      console.warn("[monthlyRollup] falhou:", err?.message || err);
     }
   }
   if (importacaoId && !(allNodes.length === 0 && label === "incremental_cursor")) {

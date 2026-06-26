@@ -108,38 +108,131 @@ function rollupPerdasIntoDiasMap(dias, perdasRows) {
   }
 }
 
+async function fetchAllSupabase(supabase, table, first, last) {
+  let allData = [];
+  let page = 0;
+  const pageSize = 1000;
+  while (true) {
+    const { data, error } = await supabase.from(table)
+      .select("*")
+      .gte("data", first)
+      .lte("data", last)
+      .range(page * pageSize, (page + 1) * pageSize - 1);
+    if (error) throw new Error(`[Supabase Fetch] table: ${table} | err: ${error.message}`);
+    if (!data || data.length === 0) break;
+    allData = allData.concat(data);
+    if (data.length < pageSize) break;
+    page++;
+  }
+  return allData;
+}
+
 /**
- * Reconstrói painel_resumo/{YYYY-MM} e subid_mensal/{YYYY-MM} a partir das coleções granulares.
+ * Reconstrói painel_resumo/{YYYY-MM} e subid_mensal/{YYYY-MM} a partir das coleções granulares no Supabase.
  */
-async function rebuildMonthlyBuckets(db, monthKey) {
+async function rebuildMonthlyBuckets(db, supabase, monthKey) {
   const { first, last } = monthBounds(monthKey);
 
-  const [shopeeSnap, subidSnap, metaSnap, perdasSnap, cliqueSnap, produtoSnap] = await Promise.all([
-    db.collection("shopee_daily")
-      .where(FieldPath.documentId(), ">=", first)
-      .where(FieldPath.documentId(), "<=", last)
-      .get(),
-    db.collection("subid_daily")
-      .where("data", ">=", first)
-      .where("data", "<=", last)
-      .get(),
-    db.collection("meta_ads_daily")
-      .where("data", ">=", first)
-      .where("data", "<=", last)
-      .get(),
-    db.collection("log_perdas")
-      .where("data", ">=", first)
-      .where("data", "<=", last)
-      .get(),
-    db.collection("clique_daily")
-      .where("data", ">=", first)
-      .where("data", "<=", last)
-      .get(),
-    db.collection("produto_daily")
-      .where("data", ">=", first)
-      .where("data", "<=", last)
-      .get(),
+  if (!supabase) {
+    throw new Error("[monthlyRollup] Supabase client is required for rebuildMonthlyBuckets");
+  }
+
+  const [shopeeRows, subidRows, metaRows, perdasRows, cliqueRows, produtoRows] = await Promise.all([
+    fetchAllSupabase(supabase, "shopee_daily", first, last),
+    fetchAllSupabase(supabase, "subid_daily", first, last),
+    fetchAllSupabase(supabase, "meta_ads_daily", first, last),
+    fetchAllSupabase(supabase, "log_perdas", first, last),
+    fetchAllSupabase(supabase, "clique_daily", first, last),
+    fetchAllSupabase(supabase, "produto_daily", first, last),
   ]);
+
+  const shopeeSnap = shopeeRows.map(x => ({
+    id: x.data,
+    data: () => ({
+      comissao_estimada: Number(x.comissao || 0),
+      comissao_real: Number(x.comissao_real || x.comissao || 0),
+      comissao_concluida: Number(x.comissao_concluida || 0),
+      comissao_pendente: Number(x.comissao_pendente || 0),
+      comissao_cancelada: Number(x.comissao_cancelada || 0),
+      faturamento: Number(x.fat_bruto || 0),
+      gmv_total: Number(x.fat_bruto || 0),
+      vendas: Number(x.vendas || 0),
+      pedidos: Number(x.pedidos || 0),
+      pedidos_concluidos: Number(x.pedidos_completos || 0),
+      pedidos_pendentes: Number(x.pedidos_pendentes || 0),
+      pedidos_cancelados: Number(x.pedidos_cancelados || 0),
+      pedidos_nao_pagos: Number(x.pedidos_nao_pagos || 0),
+      comissao_nao_paga: Number(x.comissao_nao_paga || 0),
+      vendas_diretas: Number(x.vendas_diretas || 0),
+      vendas_indiretas: Number(x.vendas_indiretas || 0),
+      perdas_pedidos: Number(x.perdas_pedidos || 0),
+      perdas_fat: Number(x.perdas_fat || 0),
+      perdas_comissao: Number(x.perdas_comissao || 0),
+    })
+  }));
+
+  const subidSnap = subidRows.map(x => ({
+    data: () => ({
+      data: x.data,
+      subid: x.subid,
+      comissoes: Number(x.comissoes || 0),
+      comissoes_estimadas: Number(x.comissoes_estimadas || 0),
+      faturamento: Number(x.faturamento || 0),
+      vendas_diretas: Number(x.vendas_diretas || 0),
+      vendas_indiretas: Number(x.vendas_indiretas || 0),
+      qtd_itens: Number(x.qtd_itens || 0),
+      total_vendas: Number(x.total_vendas || 0),
+      pedidos: Number(x.pedidos || 0),
+      cliques_anuncio: Number(x.cliques_anuncio || 0),
+      cliques_shopee: Number(x.cliques_shopee || 0),
+    })
+  }));
+
+  const metaSnap = metaRows.map(x => ({
+    data: () => ({
+      data: x.data,
+      subid: x.subid,
+      nomeAnuncio: x.subid,
+      valorUsado: Number(x.gasto || 0),
+      cliquesTotal: Number(x.cliques || 0),
+    })
+  }));
+
+  const perdasSnap = perdasRows.map(x => ({
+    data: () => ({
+      data: x.data,
+      orderId: x.order_id,
+      itemId: x.item_id,
+      conversionId: x.conversion_id,
+      subid: x.subid,
+      comissao_perdida: Number(x.comissao_perdida || 0),
+      faturamento_perdido: Number(x.valor_pedido || 0),
+      motivo: x.motivo,
+      itemNotes: x.item_notes,
+    })
+  }));
+
+  const cliqueSnap = cliqueRows.map(x => ({
+    data: () => ({
+      data: x.data,
+      subid: x.subid,
+      cliques: Number(x.cliques || 0),
+    })
+  }));
+
+  const produtoSnap = produtoRows.map(x => ({
+    data: () => ({
+      data: x.data,
+      produto_id: x.item_id,
+      nome: x.nome,
+      comissao_estimada: Number(x.comissao || 0),
+      comissoes_pendentes: Number(x.comissao_pendente || 0),
+      comissoes_concluidas: Number(x.comissao_concluida || 0),
+      qtd_itens: Number(x.qtd_itens || 0),
+      faturamento: Number(x.faturamento || 0),
+      cliques: Number(x.cliques || 0),
+    })
+  }));
 
   const dias = {};
   const subids = {};
@@ -296,11 +389,11 @@ async function rebuildMonthlyBuckets(db, monthKey) {
     top300.push(outros);
   }
 
-  const perdasRows = [];
+  const mappedPerdas = [];
   perdasSnap.forEach((docSnap) => {
-    perdasRows.push(docSnap.data() || {});
+    mappedPerdas.push(docSnap.data() || {});
   });
-  rollupPerdasIntoDiasMap(dias, perdasRows);
+  rollupPerdasIntoDiasMap(dias, mappedPerdas);
 
   const batch = db.batch();
   // merge:false — mapas aninhados (dias/subids) com merge:true deixam chaves antigas
@@ -327,9 +420,9 @@ async function rebuildMonthlyBuckets(db, monthKey) {
     monthKey,
     diasCount: Object.keys(dias).length,
     subidKeys: Object.keys(subids).length,
-    subidDocs: subidSnap.size,
-    perdasDocs: perdasSnap.size,
-    produtoDocs: produtoSnap.size,
+    subidDocs: subidSnap.length,
+    perdasDocs: perdasSnap.length,
+    produtoDocs: produtoSnap.length,
     produtoMensalCount: top300.length,
   };
 }
@@ -369,7 +462,7 @@ async function withRollupLock(monthKey, fn) {
  * @param {boolean} opts.reconcile - mantido para compatibilidade; sem efeito
  * @param {number} opts.throttleMs - se > 0, pula meses cujo painel_resumo foi atualizado há menos de throttleMs
  */
-async function refreshMonthlyBucketsForDates(db, dateStrs, { reconcile = false, throttleMs = 0 } = {}) {
+async function refreshMonthlyBucketsForDates(db, supabase, dateStrs, { reconcile = false, throttleMs = 0 } = {}) {
   // PATCH A: removida a expansão `previousMonthKey` em reconcile.
   // Se mudança retroativa atinge maio/abril, o dia afetado entra em dateStrs
   // pelo próprio runShopeeSync e o mês é reconstruído organicamente.
@@ -398,7 +491,7 @@ async function refreshMonthlyBucketsForDates(db, dateStrs, { reconcile = false, 
 
     try {
       // PATCH C: serializa rollups do mesmo mês na mesma instância
-      const r = await withRollupLock(monthKey, () => rebuildMonthlyBuckets(db, monthKey));
+      const r = await withRollupLock(monthKey, () => rebuildMonthlyBuckets(db, supabase, monthKey));
       results.push(r);
     } catch (err) {
       console.warn(`[monthlyRollup] falha ${monthKey}:`, err?.message || err);

@@ -16,6 +16,14 @@ const path = require("path");
 const admin = require(path.join(__dirname, "../functions/node_modules/firebase-admin"));
 const { rebuildMonthlyBuckets } = require("../functions/lib/monthlyRollup");
 
+const { createClient } = require(path.join(__dirname, "../functions/node_modules/@supabase/supabase-js"));
+
+const supabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
+const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_SERVICE_ROLE_KEY;
+const supabase = createClient(supabaseUrl, supabaseKey, {
+  auth: { persistSession: false }
+});
+
 if (!admin.apps.length) {
   admin.initializeApp();
 }
@@ -59,7 +67,7 @@ async function main() {
 
   console.log(`Backfill ${months.length} mês(es):`, months.join(", "));
   for (const mk of months) {
-    const r = await rebuildMonthlyBuckets(db, mk);
+    const r = await rebuildMonthlyBuckets(db, supabase, mk);
     console.log(
       `  ✓ ${mk}: ${r.diasCount} dias, ${r.subidKeys} subids (${r.subidDocs} docs),`
       + ` produto_mensal=${r.produtoMensalCount ?? "?"} (${r.produtoDocs ?? "?"} produto_daily)`,
