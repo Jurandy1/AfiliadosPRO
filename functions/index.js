@@ -4801,7 +4801,7 @@ async function runShopeeSync({
       for (const date of [...datesToReplace]) {
         const totais = dayMap[date];
         const vazio = !totais || diaShopeeDailyVazio(totais);
-        if (allNodes.length === 0 && vazio && isDiaComAtrasoShopeeApi(date)) {
+        if (vazio && isDiaComAtrasoShopeeApi(date)) {
           console.warn(`[shopee] skip gravar ${date}: API retornou 0 nodes (atraso normal hoje/ontem)`);
           datesToReplace.delete(date);
           if (dayMap[date] && diaShopeeDailyVazio(dayMap[date])) delete dayMap[date];
@@ -8204,10 +8204,20 @@ exports.claudeDailyAnalysis = onSchedule(
   {
     schedule: 'every day 10:00',
     timeZone: 'America/Sao_Paulo',
+    secrets: ['ANTHROPIC_API_KEY'],
     timeoutSeconds: 300,
+    memory: '512MiB',
   },
   async () => {
+    const startedAt = Date.now();
     console.log('[claudeDailyAnalysis] Iniciando analise diaria automatica...');
-    await runClaudeAnalysis();
+    try {
+      await runClaudeAnalysis();
+      console.log(`[claudeDailyAnalysis] OK em ${Date.now() - startedAt}ms`);
+    } catch (e) {
+      // Sem catch o scheduler engole o erro e o usuário só descobre dias depois
+      console.error('[claudeDailyAnalysis] FALHOU:', e?.message || e, e?.stack || '');
+      throw e;
+    }
   }
 );

@@ -215,6 +215,10 @@ function cleanFirestoreTypes(obj) {
   const clean = {};
   for (const [key, val] of Object.entries(obj)) {
     // Remover ou converter Sentinel objects do Firestore
+    if (val && typeof val === "object" && val._methodName === "serverTimestamp") {
+      clean[key] = new Date().toISOString();
+      continue;
+    }
     if (val && typeof val === "object" && val.constructor && val.constructor.name === "FieldValue") {
       if (val.isEqual && val.isEqual(require("firebase-admin").firestore.FieldValue.serverTimestamp())) {
         clean[key] = new Date().toISOString();
