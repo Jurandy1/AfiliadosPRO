@@ -243,9 +243,9 @@ function agregarPorSubId(nodes) {
     const subid = row.subid || "(sem_subid)";
     if (!supaSubids[subid]) supaSubids[subid] = 0;
     const c1 = parseFloat(row.comissoes || "0") || 0;
-    const c2 = parseFloat(row.comissoes_estimadas || "0") || 0;
-    supaSubids[subid] += (c1 + c2);
-    totalSupa += (c1 + c2);
+    // Não somamos c2 (comissoes_estimadas) pois no Firebase ambas são populadas com a comissão total e causava duplicidade.
+    supaSubids[subid] += c1;
+    totalSupa += c1;
   }
   
   console.log(`Total Supabase Comissão: R$ ${roundMoney(totalSupa).toLocaleString("pt-BR")}`);

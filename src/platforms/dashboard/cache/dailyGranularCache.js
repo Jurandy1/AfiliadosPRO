@@ -114,17 +114,21 @@ export async function fetchSmartDailyCollection(colName, startStr, endStr) {
     const minDate = missingDates[0];
     const maxDate = missingDates[missingDates.length - 1];
 
-    let snap = [];
-    let page = 0;
-    while (true) {
-      let q = supabase.from(colName).select("*");
-      q = q.gte("data", minDate).lte("data", maxDate).range(page * 1000, (page + 1) * 1000 - 1);
-      const { data: pageData, error } = await q;
-      if (error || !pageData || pageData.length === 0) break;
-      snap.push(...pageData);
-      if (pageData.length < 1000) break;
-      page++;
-    }
+      let snap = [];
+      let page = 0;
+      let fetchError = null;
+      while(true) {
+        let q = supabase.from(colName).select("*");
+        q = q.gte("data", minDate).lte("data", maxDate)
+             .order("data", { ascending: true })
+             .order("id", { ascending: true })
+             .range(page * 1000, (page + 1) * 1000 - 1);
+        const { data: pageData, error } = await q;
+        if (error || !pageData || pageData.length === 0) break;
+        snap.push(...pageData);
+        if (pageData.length < 1000) break;
+        page++;
+      }
 
     // Agrupa docs por data
     const fetchedByDate = {};

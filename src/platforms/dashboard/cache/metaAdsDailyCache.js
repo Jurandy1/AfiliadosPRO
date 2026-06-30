@@ -136,6 +136,9 @@ export async function fetchMetaAdsDailySnapshot(startDate, endDate) {
           .select("*")
           .gte("data", startDate)
           .lte("data", endDate)
+          .order("data", { ascending: true })
+          .order("subid", { ascending: true })
+          .order("ad_id", { ascending: true })
           .range(page * 1000, (page + 1) * 1000 - 1);
         if (error) {
           fetchError = error;

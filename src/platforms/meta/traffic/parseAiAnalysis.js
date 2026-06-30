@@ -33,14 +33,25 @@ export function classifyRoi(roi) {
 
 export function parseTotais(md) {
   if (!md) return null;
-  const re =
-    /Total\s+Gasto[*:\s]+R?\$?\s*([+-]?[\d.,]+)[\s\S]*?Total\s+Comiss[ãa]o[*:\s]+R?\$?\s*([+-]?[\d.,]+)[\s\S]*?Lucro\s+L[íi]quido[*:\s]+R?\$?\s*([+-]?[\d.,]+)[\s\S]*?ROI\s+Geral[*:\s]+([+-]?[\d.,]+)\s*%/i;
-  const m = md.match(re);
-  if (!m) return null;
-  const gasto = parseBrNumber(m[1]);
-  const comissao = parseBrNumber(m[2]);
-  const lucro = parseBrNumber(m[3]);
-  const roiGeral = m[4] != null ? parseBrNumber(m[4]) : (gasto > 0 ? (lucro / gasto) * 100 : 0);
+  // Aceita sinal antes ou depois de "R$" — markdown costuma gerar:
+  //   "Lucro Líquido: -R$ 10,48" (sinal antes do R$)
+  //   "Lucro Líquido: R$ -10,48" (sinal dentro do número)
+  // Captura o trecho até próxima barra/quebra; parseBrNumber resolve o número.
+  const reG = /Total\s+Gasto[*:\s]+([^|\n]+?)(?=\s*[|\n]|$)/i;
+  const reC = /Total\s+Comiss[ãa]o[*:\s]+([^|\n]+?)(?=\s*[|\n]|$)/i;
+  const reL = /Lucro\s+L[íi]quido[*:\s]+([^|\n]+?)(?=\s*[|\n]|$)/i;
+  const reR = /ROI\s+Geral[*:\s]+([^|\n]+?)\s*%/i;
+
+  const mG = md.match(reG);
+  const mC = md.match(reC);
+  const mL = md.match(reL);
+  const mR = md.match(reR);
+  if (!mG || !mC || !mL) return null;
+
+  const gasto = parseBrNumber(mG[1]);
+  const comissao = parseBrNumber(mC[1]);
+  const lucro = parseBrNumber(mL[1]);
+  const roiGeral = mR ? parseBrNumber(mR[1]) : (gasto > 0 ? (lucro / gasto) * 100 : 0);
   return { gasto, comissao, lucro, roiGeral };
 }
 
