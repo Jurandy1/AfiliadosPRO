@@ -127,17 +127,31 @@ export async function fetchMetaAdsDailySnapshot(startDate, endDate) {
       const dataArray = await fetchSmartDailyCollection("meta_ads_daily", startDate, endDate);
       result = arrayToSnapLike(dataArray);
     } else {
-      const { data, error } = await supabase
-        .from("meta_ads_daily")
-        .select("*")
-        .gte("data", startDate)
-        .lte("data", endDate);
+      let snap = [];
+      let page = 0;
+      let fetchError = null;
+      while(true) {
+        const { data, error } = await supabase
+          .from("meta_ads_daily")
+          .select("*")
+          .gte("data", startDate)
+          .lte("data", endDate)
+          .range(page * 1000, (page + 1) * 1000 - 1);
+        if (error) {
+          fetchError = error;
+          break;
+        }
+        if (!data || data.length === 0) break;
+        snap.push(...data);
+        if (data.length < 1000) break;
+        page++;
+      }
 
-      if (error) {
-        console.warn("[Supabase] Erro ao buscar meta_ads_daily:", error.message);
+      if (fetchError) {
+        console.warn("[Supabase] Erro ao buscar meta_ads_daily:", fetchError.message);
         result = EMPTY_SNAP;
       } else {
-        result = arrayToSnapLike(data || []);
+        result = arrayToSnapLike(snap);
       }
     }
     lruTouch(key, result);
