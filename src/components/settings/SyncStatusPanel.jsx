@@ -159,7 +159,7 @@ export default function SyncStatusPanel() {
             schedule="Incremental 0h/6h/12h/18h BRT · reconcile 04:00 · dias recentes a cada 4h"
           >
             <SyncRow
-              label="Última gravação (hoje)"
+              label="Última gravação (dados diários)"
               value={formatarTempoAtras(shopee.ultimaAtualizacaoHoje) || "—"}
               tone={shopee.ultimaAtualizacaoHoje ? "ok" : "default"}
             />
@@ -193,7 +193,7 @@ export default function SyncStatusPanel() {
                 Referência geral: {formatarTempoAtras(shopeeUltima)}
               </p>
             ) : (
-              <p className="text-[10px] text-amber-700 mt-2">Ainda sem registro de sync no Firestore.</p>
+              <p className="text-[10px] text-amber-700 mt-2">Aguardando o primeiro registro — preenche na próxima execução automática.</p>
             )}
           </ApiCard>
 
@@ -221,7 +221,7 @@ export default function SyncStatusPanel() {
               />
             ) : null}
             {!meta.lastDailySyncAt && !meta.lastAdsSyncAt ? (
-              <p className="text-[10px] text-amber-700 mt-2">Ainda sem registro de sync no Firestore.</p>
+              <p className="text-[10px] text-amber-700 mt-2">Aguardando o primeiro registro — preenche na próxima execução automática.</p>
             ) : null}
           </ApiCard>
         </div>

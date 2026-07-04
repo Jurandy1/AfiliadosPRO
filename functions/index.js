@@ -3636,26 +3636,34 @@ async function syncStateToSupabase(docId, patch) {
         cleanPatch[k] = null;
         continue;
       }
-      if (typeof val === "object" && val.constructor && val.constructor.name === "FieldValue") {
-        try {
-          if (val.isEqual && val.isEqual(FieldValue.serverTimestamp())) {
-            cleanPatch[k] = new Date().toISOString();
-            continue;
-          }
-        } catch { /* ignore */ }
-        
-        // increment → lê valor atual + soma operand
-        if (val._methodName === "FieldValue.increment" || (val.operand !== undefined)) {
-          const operand = Number(val.operand || val._operand || 1);
-          const atual = Number((existing?.data_blob || {})[k] || 0);
-          cleanPatch[k] = atual + operand;
-          continue;
-        }
+      if (typeof val === "object" && typeof val.toDate === "function") {
+        cleanPatch[k] = val.toDate().toISOString(); // Timestamp do Firestore
         continue;
       }
-      if (typeof val === "object" && typeof val.toDate === "function") {
-        cleanPatch[k] = val.toDate().toISOString();
+      if (val instanceof Date) {
+        cleanPatch[k] = val.toISOString();
         continue;
+      }
+      if (typeof val === "object" && !Array.isArray(val)) {
+        // Sentinelas do firebase-admin NÃO são instâncias chamadas "FieldValue":
+        // serverTimestamp() vira ServerTimestampTransform e increment() vira
+        // NumericIncrementTransform. O teste antigo por constructor.name nunca
+        // batia e o sentinela era serializado como {} — era isso que deixava o
+        // painel "Status e sincronização" sem nenhum timestamp.
+        const ctor = (val.constructor && val.constructor.name) || "";
+        const method = String(val._methodName || val.methodName || "");
+        const pareceSentinela = ctor.includes("Transform") || ctor.includes("FieldValue")
+          || /serverTimestamp|increment/i.test(method) || val.operand !== undefined;
+        if (pareceSentinela) {
+          if (val.operand !== undefined || /increment/i.test(method)) {
+            const operand = Number(val.operand ?? val._operand ?? 1);
+            const atual = Number((existing?.data_blob || {})[k]) || 0;
+            cleanPatch[k] = atual + operand;
+          } else {
+            cleanPatch[k] = new Date().toISOString();
+          }
+          continue;
+        }
       }
       cleanPatch[k] = val;
     }

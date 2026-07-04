@@ -1056,11 +1056,17 @@ export async function getDashboardPanelModoAll(settings = {}) {
   };
 }
 export async function getUltimaAtualizacaoHoje() {
-  const hojeStr = formatDateBRTYYYYMMDD();
+  // Gravação mais recente em shopee_daily, independente do dia: o dia corrente
+  // muitas vezes ainda não tem linha (delay 24-48h da Shopee) e olhar só "hoje"
+  // mostrava "—" com o sync funcionando.
   try {
-    const { data: snapRow } = await supabase.from("shopee_daily").select("*").eq("data", hojeStr).single();
-    if (!snapRow) return null;
-    return snapRow.updatedAt?.toDate?.() || (snapRow.ultima_sync ? new Date(snapRow.ultima_sync) : null);
+    const { data: rows } = await supabase
+      .from("shopee_daily")
+      .select("data, ultima_sync")
+      .order("ultima_sync", { ascending: false })
+      .limit(1);
+    const row = rows?.[0];
+    return row?.ultima_sync ? new Date(row.ultima_sync) : null;
   } catch (err) {
     console.warn("[getUltimaAtualizacaoHoje] erro:", err);
     return null;

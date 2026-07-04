@@ -248,27 +248,33 @@ function cleanFirestoreTypes(obj) {
 
   const clean = {};
   for (const [key, val] of Object.entries(obj)) {
-    // Remover ou converter Sentinel objects do Firestore
-    if (val && typeof val === "object" && val._methodName === "serverTimestamp") {
-      clean[key] = new Date().toISOString();
+    if (val && typeof val === "object" && typeof val.toDate === "function") {
+      // Timestamp do Firestore
+      clean[key] = val.toDate().toISOString();
       continue;
     }
-    if (val && typeof val === "object" && val.constructor && val.constructor.name === "FieldValue") {
-      if (val.isEqual && val.isEqual(require("firebase-admin").firestore.FieldValue.serverTimestamp())) {
-        clean[key] = new Date().toISOString();
-      } else {
-        // Ignorar outros FieldValues como increment por enquanto, pois o payload do `merge`
-        // idealmente já vem com os valores absolutos após os gets, ou o upsert vai sobrescrever.
-        // No contexto atual, os 'increments' são problemáticos para replicação cega,
-        // mas as tabelas *_daily da Shopee são atualizadas por replace absoluto no modo padrão.
+    if (val instanceof Date) {
+      clean[key] = val.toISOString();
+      continue;
+    }
+    if (val && typeof val === "object" && !Array.isArray(val)) {
+      // Sentinelas do firebase-admin não se chamam "FieldValue": serverTimestamp()
+      // é ServerTimestampTransform, increment() é NumericIncrementTransform.
+      // Sem esta detecção o sentinela é serializado como {} no jsonb.
+      const ctor = (val.constructor && val.constructor.name) || "";
+      const method = String(val._methodName || val.methodName || "");
+      const pareceSentinela = ctor.includes("Transform") || ctor.includes("FieldValue")
+        || /serverTimestamp|increment/i.test(method) || val.operand !== undefined;
+      if (pareceSentinela) {
+        if (/serverTimestamp/i.test(method) || (!/increment/i.test(method) && val.operand === undefined)) {
+          clean[key] = new Date().toISOString();
+        }
+        // increment e outros transforms: sem valor absoluto disponível aqui —
+        // omite a chave em vez de gravar lixo (upsert seguinte corrige).
         continue;
       }
-    } else if (val && typeof val === "object" && val.toDate) {
-      // É um Timestamp
-      clean[key] = val.toDate().toISOString();
-    } else {
-      clean[key] = cleanFirestoreTypes(val);
     }
+    clean[key] = cleanFirestoreTypes(val);
   }
   return clean;
 }
