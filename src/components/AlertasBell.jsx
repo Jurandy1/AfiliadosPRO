@@ -64,16 +64,30 @@ export default function AlertasBell() {
   const listaVisivel = abaAtiva === "ja_vendo" ? jaVendo : descoberta;
   const corPrimaria = abaAtiva === "ja_vendo" ? "#ee4d2d" : "#4a90e2";
 
+  // Merge no data_blob inteiro: update parcial substituiria o blob e apagaria
+  // o conteúdo do alerta (nome, link, score...).
+  async function patchAlertaRemoto(id, patch) {
+    try {
+      const { data: d } = await supabase.from("garimpo_alertas").select("data_blob").eq("id", id).single();
+      await supabase
+        .from("garimpo_alertas")
+        .update({ ...patch, data_blob: { ...(d?.data_blob || {}), ...patch } })
+        .eq("id", id);
+    } catch (err) {
+      console.warn("[garimpo_alertas] update falhou:", err?.message || err);
+    }
+  }
+
   async function marcarComoLido(id) {
     patchAlertasBellLocal(id, { lido: true });
     setAlertas((prev) => prev.map((a) => (a.id === id ? { ...a, lido: true } : a)));
-    await supabase.from("garimpo_alertas").update({ data_blob: { lido: true } }).eq("tipo", id); // simplificado
+    await patchAlertaRemoto(id, { lido: true });
   }
 
   async function arquivar(id) {
     patchAlertasBellLocal(id, { arquivado: true });
     setAlertas((prev) => prev.filter((a) => a.id !== id));
-    await supabase.from("garimpo_alertas").update({ data_blob: { arquivado: true } }).eq("tipo", id); // simplificado
+    await patchAlertaRemoto(id, { arquivado: true });
   }
 
   async function copiarLink(link, id) {

@@ -115,6 +115,22 @@ async function buildFilesKey(buffers) {
   return hashes.filter(Boolean).sort().join("|");
 }
 
+/**
+ * Registra uma importação no Supabase. tipo e status são colunas NOT NULL —
+ * inserir só {id, data_blob} falha em silêncio e o histórico fica vazio.
+ */
+async function registrarImportacao(importId, blob) {
+  const { error } = await supabase.from("importacoes").insert({
+    id: importId,
+    tipo: blob.tipo || "desconhecido",
+    status: blob.status || "sucesso",
+    total_docs: Math.round(Number(blob.linhasProcessadas || 0)),
+    finalizado_em: blob.importadoEm || new Date().toISOString(),
+    data_blob: blob,
+  });
+  if (error) console.warn("[registrarImportacao] falhou:", error.message);
+}
+
 function pickLatestImport(importacoes, tipo) {
   return [...(importacoes || [])]
     .filter((item) => item.tipo === tipo && item.modo !== "daily_only")
@@ -189,21 +205,18 @@ export async function importShopeeVenda(arrayBufferOrBuffers, options = {}) {
 
   // Register importacao
   const pedidosCsv = Object.values(prodMap || {}).reduce((s, p) => s + (p.pedidos_pendentes || 0) + (p.pedidos_concluidos || 0), 0);
-  await supabase.from("importacoes").insert({
-    id: importId,
-    data_blob: {
-      tipo: "shopee_venda",
-      fonte: "csv_manual",
-      linhasProcessadas: processed,
-      pedidos: pedidosCsv,
-      produtosUnicos: Object.keys(prodMap).length,
-      subIdsUnicos: subIdKeys.length,
-      subIdResumo,
-      status: "sucesso",
-      modo: mode,
-      filesKey,
-      importadoEm: new Date().toISOString(),
-    }
+  await registrarImportacao(importId, {
+    tipo: "shopee_venda",
+    fonte: "csv_manual",
+    linhasProcessadas: processed,
+    pedidos: pedidosCsv,
+    produtosUnicos: Object.keys(prodMap).length,
+    subIdsUnicos: subIdKeys.length,
+    subIdResumo,
+    status: "sucesso",
+    modo: mode,
+    filesKey,
+    importadoEm: new Date().toISOString(),
   });
 
   await touchImportacoesLatest("shopee_venda", importId);
@@ -257,20 +270,17 @@ export async function importShopeeClique(arrayBufferOrBuffers, options = {}) {
     });
   }
 
-  await supabase.from("importacoes").insert({
-    id: importId,
-    data_blob: {
-      tipo: "shopee_clique",
-      linhasProcessadas: processed,
-      subIdsUnicos: Object.keys(subIdMap).length,
-      totalCliques: processed,
-      porReferenciador: byReferrer,
-      porData: byDate,
-      status: "sucesso",
-      modo: mode,
-      filesKey,
-      importadoEm: new Date().toISOString(),
-    }
+  await registrarImportacao(importId, {
+    tipo: "shopee_clique",
+    linhasProcessadas: processed,
+    subIdsUnicos: Object.keys(subIdMap).length,
+    totalCliques: processed,
+    porReferenciador: byReferrer,
+    porData: byDate,
+    status: "sucesso",
+    modo: mode,
+    filesKey,
+    importadoEm: new Date().toISOString(),
   });
 
   await touchImportacoesLatest("shopee_clique", importId);
@@ -300,9 +310,11 @@ export async function importMetaAds(arrayBufferOrBuffers) {
     await supabase.from("meta_ads").insert(toInsert.slice(i, i + 1000));
   }
 
-  await supabase.from("importacoes").insert({
-    id: importId,
-    data_blob: { tipo: "meta_ads", linhasProcessadas: parsed.length, status: "sucesso", importadoEm: new Date().toISOString() }
+  await registrarImportacao(importId, {
+    tipo: "meta_ads",
+    linhasProcessadas: parsed.length,
+    status: "sucesso",
+    importadoEm: new Date().toISOString(),
   });
 
   await touchImportacoesLatest("meta_ads", importId);
@@ -336,9 +348,11 @@ export async function importPinterest(arrayBufferOrBuffers) {
     await supabase.from("pinterest_ads").insert(toInsert.slice(i, i + 1000));
   }
 
-  await supabase.from("importacoes").insert({
-    id: importId,
-    data_blob: { tipo: "pinterest", linhasProcessadas: parsed.length, status: "sucesso", importadoEm: new Date().toISOString() }
+  await registrarImportacao(importId, {
+    tipo: "pinterest",
+    linhasProcessadas: parsed.length,
+    status: "sucesso",
+    importadoEm: new Date().toISOString(),
   });
 
   await touchImportacoesLatest("pinterest", importId);

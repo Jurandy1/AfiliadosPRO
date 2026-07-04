@@ -4943,12 +4943,12 @@ async function runShopeeSync({
         ? 30 * 60 * 1000
         : 4 * 60 * 60 * 1000;
 
-    // PATCH 2026-07-04: rollup mensal DESLIGADO por padrão — só escreve no Firebase.
-    // Ninguém lê os buckets painel_resumo/subid_mensal/produto_mensal de lá:
-    // loadMonthlyBucketData (front) retorna null e os agregados mensais vêm das
-    // views do Supabase em tempo real. Além do custo, o doc subid_mensal/2026-06
-    // estourou o limite de índices do Firestore ("too many index entries") e
-    // rejeitava todo Commit. Para reativar: ENABLE_MONTHLY_ROLLUP=true no .env.
+    // PATCH 2026-07-04 (v2): rollup mensal reativado escrevendo SÓ no Supabase
+    // (produto_mensal — lido por fetchProdutoMensalDoc no front). Os buckets do
+    // Firestore (painel_resumo/subid_mensal/produto_mensal) ficam atrás de
+    // ENABLE_FIRESTORE_MONTHLY_BUCKETS porque ninguém lê de lá e o doc
+    // subid_mensal/2026-06 estourou o limite de índices ("too many index
+    // entries"), rejeitando todo Commit. Gate geral: ENABLE_MONTHLY_ROLLUP.
     if (process.env.ENABLE_MONTHLY_ROLLUP === "true") {
       try {
         const r = await refreshMonthlyBucketsForDates(db, supabase, diasRollup, { throttleMs });
@@ -7124,7 +7124,7 @@ exports.metaDailyRecentSync = onSchedule(
         }
         if (process.env.ENABLE_MONTHLY_ROLLUP === "true") {
           try {
-            await refreshMonthlyBucketsForDates(db, dias, { throttleMs: 4 * 60 * 60 * 1000 });
+            await refreshMonthlyBucketsForDates(db, supabase, dias, { throttleMs: 4 * 60 * 60 * 1000 });
           } catch (err) {
             console.warn("[monthlyRollup/metaRecent] falhou:", err?.message || err);
           }
@@ -7167,7 +7167,7 @@ exports.metaDailyReconcile = onSchedule(
         }
         if (process.env.ENABLE_MONTHLY_ROLLUP === "true") {
           try {
-            await refreshMonthlyBucketsForDates(db, dias, { throttleMs: 6 * 60 * 60 * 1000 });
+            await refreshMonthlyBucketsForDates(db, supabase, dias, { throttleMs: 6 * 60 * 60 * 1000 });
           } catch (err) {
             console.warn("[monthlyRollup/metaReconcile] falhou:", err?.message || err);
           }
@@ -7456,6 +7456,11 @@ async function runShopeeGarimpo({ secrets, maxPaginas = 5 }) {
 
   const seteDiasAtras = new Date(Date.now() - 7 * 86400 * 1000);
 
+  // O sino de alertas do front lê do Supabase (garimpo_alertas); o Firestore
+  // continua recebendo o doc por causa do dedup acima. id numérico é exigido
+  // pela tabela (bigint sem default).
+  const alertasParaSupabase = [];
+
   async function gerarAlertas(candidatos, categoria, capMax = 5) {
     let gravados = 0;
     for (const p of candidatos) {
@@ -7474,8 +7479,7 @@ async function runShopeeGarimpo({ secrets, maxPaginas = 5 }) {
         console.log(`[garimpo] dedup ${categoria}: pulando ${p.itemId}`);
         continue;
       }
-      const ref = db.collection("garimpo_alertas").doc();
-      await ref.set({
+      const payload = {
         tipo: "score_alto",
         categoria, // "ja_vendo" ou "descoberta"
         itemId: p.itemId,
@@ -7494,7 +7498,13 @@ async function runShopeeGarimpo({ secrets, maxPaginas = 5 }) {
         shop_name: p.shop_name,
         lido: false,
         arquivado: false,
-        createdAt: FieldValue.serverTimestamp(),
+      };
+      const ref = db.collection("garimpo_alertas").doc();
+      await ref.set({ ...payload, createdAt: FieldValue.serverTimestamp() });
+      alertasParaSupabase.push({
+        tabela: "garimpo_alertas",
+        id: Date.now() * 1000 + alertasParaSupabase.length,
+        data: { ...payload, firestoreId: ref.id, createdAt: new Date().toISOString() },
       });
       gravados++;
     }
@@ -7504,6 +7514,10 @@ async function runShopeeGarimpo({ secrets, maxPaginas = 5 }) {
   const alertasJaVendo = await gerarAlertas(candidatosJaVendo, "ja_vendo", 5);
   const alertasDescoberta = await gerarAlertas(candidatosDescoberta, "descoberta", 5);
   const alertasGravados = alertasJaVendo + alertasDescoberta;
+
+  if (supabase && alertasParaSupabase.length > 0) {
+    await syncToSupabase(supabase, alertasParaSupabase, []).catch(console.error);
+  }
 
   const duracaoMs = Date.now() - startedAt;
   console.log(`[garimpo] fim | produtos=${produtosEnriquecidos.length} | alertas=${alertasGravados} (ja_vendo=${alertasJaVendo} descoberta=${alertasDescoberta}) | ${duracaoMs}ms`);

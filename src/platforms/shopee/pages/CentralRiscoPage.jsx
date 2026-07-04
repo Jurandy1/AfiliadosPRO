@@ -90,13 +90,13 @@ function RiscoMetricas({ item }) {
       <MetricChip key="pend" icon={Clock} tone="amber" label={`${m.pendentes} pendente${m.pendentes !== 1 ? "s" : ""}`} />,
     );
   }
-  if (m.comissaoPerdida >= 1) {
+  if ((item.prejuizo || 0) >= 1) {
     chips.push(
       <MetricChip
         key="perd"
         icon={TrendingDown}
         tone="rose"
-        label={`R$ ${m.comissaoPerdida.toFixed(2)} perdidos`}
+        label={`${item.prejuizoEstimado ? "≈ " : ""}R$ ${item.prejuizo.toFixed(2)} perdidos${item.prejuizoEstimado ? " (est.)" : ""}`}
       />,
     );
   }

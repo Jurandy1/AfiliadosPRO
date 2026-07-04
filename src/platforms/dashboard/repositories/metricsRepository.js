@@ -1116,6 +1116,8 @@ export async function getSyncHealthStatus() {
   }
 }
 export async function getSubIdVendasMap({ subIds } = {}) {
+  // Agrega direto de subid_daily — a tabela "subids" (acumulado vitalício)
+  // não tem escritor no Supabase e ficaria sempre vazia.
   const map = {};
   const ids = [...new Set(
     (subIds || [])
@@ -1123,32 +1125,63 @@ export async function getSubIdVendasMap({ subIds } = {}) {
       .filter(Boolean),
   )];
 
-  const applyDoc = (d) => {
-    const data = d.data() || {};
-    const key = String(d.id || "").trim();
-    if (!key) return;
-    map[key] = {
-      subid: d.doc_id || d.data || d.key,
-      comissao: Number(data.comissoes || 0),
-      faturamento: Number(data.faturamento || 0),
-      vendas: Number(data.vendas_diretas || 0) + Number(data.vendas_indiretas || 0),
-      qtdItens: Number(data.qtd_itens || 0),
-    };
+  const COLS = "subid, comissoes, comissoes_estimadas, faturamento, vendas_diretas, vendas_indiretas, qtd_itens";
+  const PAGE = 1000;
+
+  const fetchRows = async (filterIds = null) => {
+    const rows = [];
+    for (let from = 0; ; from += PAGE) {
+      let query = supabase
+        .from("subid_daily")
+        .select(COLS)
+        .order("data", { ascending: true })
+        .order("subid", { ascending: true })
+        .range(from, from + PAGE - 1);
+      if (filterIds) query = query.in("subid", filterIds);
+      const { data, error } = await query;
+      if (error) {
+        console.warn("[getSubIdVendasMap] subid_daily query falhou:", error.message);
+        break;
+      }
+      rows.push(...(data || []));
+      if (!data || data.length < PAGE) break;
+    }
+    return rows;
   };
 
+  let rows = [];
   if (ids.length > 0) {
-    for (let i = 0; i < ids.length; i += 30) {
-      const chunk = ids.slice(i, i + 30);
-      const { data: subVendasData } = await supabase.from("subids").select("*").in("id", chunk);
-      const snap = { docs: (subVendasData||[]).map(d => ({ data: () => d })) };
-      snap.docs.forEach(applyDoc);
+    for (let i = 0; i < ids.length; i += 100) {
+      rows.push(...await fetchRows(ids.slice(i, i + 100)));
     }
-    return map;
+  } else {
+    rows = await fetchRows();
   }
 
-  const { data: svData } = await supabase.from("subids").select("*").limit(500);
-  const snap = { forEach: (cb) => (svData||[]).forEach(d => cb({ id: d.doc_id || d.data || d.key, data: () => d })) };
-  snap.forEach(applyDoc);
+  const acc = {};
+  for (const r of rows) {
+    const key = String(r.subid || "").trim();
+    if (!key) continue;
+    if (!acc[key]) {
+      acc[key] = { comissoes: 0, estimadas: 0, faturamento: 0, vendas: 0, qtdItens: 0 };
+    }
+    const a = acc[key];
+    a.comissoes += Number(r.comissoes || 0);
+    a.estimadas += Number(r.comissoes_estimadas || 0);
+    a.faturamento += Number(r.faturamento || 0);
+    a.vendas += Number(r.vendas_diretas || 0) + Number(r.vendas_indiretas || 0);
+    a.qtdItens += Number(r.qtd_itens || 0);
+  }
+
+  for (const [key, a] of Object.entries(acc)) {
+    map[key] = {
+      subid: key,
+      comissao: roundMoney(a.comissoes > 0 ? a.comissoes : a.estimadas),
+      faturamento: roundMoney(a.faturamento),
+      vendas: a.vendas,
+      qtdItens: a.qtdItens,
+    };
+  }
   return map;
 }
 

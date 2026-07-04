@@ -129,8 +129,30 @@ async function syncToSupabase(supabase, upserts, deletes) {
         case "importacoes":
           tabela = "importacoes";
           onConflict = "id";
+          // tipo e status são colunas NOT NULL na tabela — mandar só data_blob
+          // faz o upsert inteiro falhar em silêncio e o histórico fica vazio.
           mappedRows = rows.map(({ id, data }) => ({
             id,
+            tipo: data.tipo || "desconhecido",
+            status: data.status || "sucesso",
+            total_docs: Math.round(Number(data.linhasProcessadas ?? data.total_docs ?? 0)),
+            finalizado_em: data.importadoEm || new Date().toISOString(),
+            data_blob: data,
+          }));
+          break;
+
+        case "garimpo_alertas":
+          tabela = "garimpo_alertas";
+          onConflict = "id";
+          // id é bigint sem default no Supabase — o chamador gera o número.
+          mappedRows = rows.map(({ id, data }) => ({
+            id,
+            tipo: data.tipo || "score_alto",
+            titulo: data.nome || null,
+            mensagem: Array.isArray(data.motivos) ? data.motivos.join(" · ") : (data.motivos || null),
+            item_id: data.itemId != null ? String(data.itemId) : null,
+            lido: !!data.lido,
+            arquivado: !!data.arquivado,
             data_blob: data,
           }));
           break;

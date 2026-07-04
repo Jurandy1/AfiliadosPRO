@@ -395,26 +395,43 @@ async function rebuildMonthlyBuckets(db, supabase, monthKey) {
   });
   rollupPerdasIntoDiasMap(dias, mappedPerdas);
 
-  const batch = db.batch();
-  // merge:false — mapas aninhados (dias/subids) com merge:true deixam chaves antigas
-  // (ex.: subid renomeado STORY---- → STORY) e inflam o bucket vs subid_daily.
-  batch.set(db.collection("painel_resumo").doc(monthKey), {
-    month: monthKey,
-    dias,
-    updatedAt: FieldValue.serverTimestamp(),
-  });
-  batch.set(db.collection("subid_mensal").doc(monthKey), {
-    month: monthKey,
-    subids,
-    updatedAt: FieldValue.serverTimestamp(),
-  });
-  batch.set(db.collection("produto_mensal").doc(monthKey), {
-    month: monthKey,
-    produtos: top300,
-    totalAgregados: produtosArr.length,
-    updatedAt: FieldValue.serverTimestamp(),
-  }, { merge: false });
-  await batch.commit();
+  // Buckets do Firestore desligados por padrão (política: escrever só no
+  // Supabase; subid_mensal/2026-06 estourou o limite de índices do Firestore).
+  if (process.env.ENABLE_FIRESTORE_MONTHLY_BUCKETS === "true") {
+    const batch = db.batch();
+    // merge:false — mapas aninhados (dias/subids) com merge:true deixam chaves antigas
+    // (ex.: subid renomeado STORY---- → STORY) e inflam o bucket vs subid_daily.
+    batch.set(db.collection("painel_resumo").doc(monthKey), {
+      month: monthKey,
+      dias,
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+    batch.set(db.collection("subid_mensal").doc(monthKey), {
+      month: monthKey,
+      subids,
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+    batch.set(db.collection("produto_mensal").doc(monthKey), {
+      month: monthKey,
+      produtos: top300,
+      totalAgregados: produtosArr.length,
+      updatedAt: FieldValue.serverTimestamp(),
+    }, { merge: false });
+    await batch.commit();
+  }
+
+  // O front lê produto_mensal do Supabase (fetchProdutoMensalDoc); sem este
+  // upsert ele cai no fallback caro de varrer produto_daily mês a mês.
+  if (supabase) {
+    const { error: pmError } = await supabase.from("produto_mensal").upsert({
+      data: monthKey,
+      produtos: top300,
+      updated_at: new Date().toISOString(),
+    }, { onConflict: "data" });
+    if (pmError) {
+      console.error(`[monthlyRollup] Supabase produto_mensal ${monthKey}:`, pmError.message);
+    }
+  }
 
   return {
     monthKey,
@@ -473,11 +490,16 @@ async function refreshMonthlyBucketsForDates(db, supabase, dateStrs, { reconcile
   const results = [];
 
   for (const monthKey of unique) {
-    // PATCH B: throttle por mês usando painel_resumo.updatedAt como timestamp.
+    // PATCH B: throttle por mês usando produto_mensal.updated_at (Supabase) —
+    // painel_resumo do Firestore não é mais atualizado por padrão.
     if (throttleMs > 0) {
       try {
-        const snap = await db.collection("painel_resumo").doc(monthKey).get();
-        const lastTs = snap.exists ? (snap.data()?.updatedAt?.toMillis?.() || 0) : 0;
+        const { data: pmRow } = await supabase
+          .from("produto_mensal")
+          .select("updated_at")
+          .eq("data", monthKey)
+          .maybeSingle();
+        const lastTs = pmRow?.updated_at ? new Date(pmRow.updated_at).getTime() : 0;
         if (lastTs > 0 && (Date.now() - lastTs) < throttleMs) {
           const ageMin = Math.round((Date.now() - lastTs) / 60000);
           console.log(`[monthlyRollup] ${monthKey} skip (throttle: rebuilt ${ageMin}min ago)`);

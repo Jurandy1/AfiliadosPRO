@@ -24,24 +24,30 @@ function metricasProduto(p) {
   };
 }
 
-/** Prejuízo estimado: comissão cancelada + risco em fraude/pendências altas. */
-function estimarPrejuizoItem(item) {
+// A API de afiliados da Shopee zera a comissão do pedido cancelado em vez de
+// reportar o valor perdido (comissao_cancelada = 0 em toda a base). Quando não
+// há valor real, estimamos por faturamento_cancelado * 8% (comissão média).
+const TAXA_COMISSAO_ESTIMADA = 0.08;
+
+/** Prejuízo do item: { valor, estimado } — real quando a Shopee reportou. */
+function prejuizoDoItem(item) {
   const m = item.metricas || {};
   const perdida = Number(m.comissaoPerdida || 0);
-  if (perdida >= 0.01) return perdida;
+  if (perdida >= 0.01) return { valor: perdida, estimado: false };
 
-  // Usa faturamento perdido * taxa estimada 8%
   const fatPerdido = Number(m.faturamentoPerdido || 0);
-  if (fatPerdido > 0) return Math.round(fatPerdido * 0.08 * 100) / 100;
+  if (fatPerdido > 0) {
+    return { valor: Math.round(fatPerdido * TAXA_COMISSAO_ESTIMADA * 100) / 100, estimado: true };
+  }
 
   const fraud = String(item.fraudStatus || "").toUpperCase();
   const pendente = Number(m.comissaoPendente || 0);
   const estimada = Number(m.comissaoEstimada || 0);
 
-  if (fraud === "FRAUD") return pendente > 0 ? pendente + estimada : estimada;
-  if (fraud === "UNVERIFIED") return pendente > 0 ? pendente : estimada * 0.5;
-  if (Number(m.pendentes || 0) >= 8 && pendente > 0) return pendente;
-  return 0;
+  if (fraud === "FRAUD") return { valor: pendente > 0 ? pendente + estimada : estimada, estimado: true };
+  if (fraud === "UNVERIFIED") return { valor: pendente > 0 ? pendente : estimada * 0.5, estimado: true };
+  if (Number(m.pendentes || 0) >= 8 && pendente > 0) return { valor: pendente, estimado: true };
+  return { valor: 0, estimado: true };
 }
 
 function scoreRisco(item) {
@@ -51,7 +57,7 @@ function scoreRisco(item) {
   if (fraud === "FRAUD") s += 500;
   if (fraud === "UNVERIFIED") s += 200;
   s += Number(item.metricas?.taxa || 0) * 100;
-  s += Number(item.metricas?.comissaoPerdida || 0) * 2;
+  s += prejuizoDoItem(item).valor * 2;
   s += Number(item.metricas?.cancelados || 0) * 10;
   s += Number(item.metricas?.pendentes || 0);
   return s;
@@ -119,6 +125,7 @@ export async function getCentralRisco() {
           taxa: Math.max(extM.taxa || 0, novM.taxa || 0),
           pendentes: Math.max(extM.pendentes || 0, novM.pendentes || 0),
           comissaoPerdida: Math.max(extM.comissaoPerdida || 0, novM.comissaoPerdida || 0),
+          faturamentoPerdido: Math.max(extM.faturamentoPerdido || 0, novM.faturamentoPerdido || 0),
           comissaoPendente: Math.max(extM.comissaoPendente || 0, novM.comissaoPendente || 0),
           comissaoEstimada: Math.max(extM.comissaoEstimada || 0, novM.comissaoEstimada || 0),
           concluidos: Math.max(extM.concluidos || 0, novM.concluidos || 0),
@@ -176,7 +183,8 @@ export async function getCentralRisco() {
   }
 
   for (const p of produtos) {
-    const id = String(p.id_item || p.id?.replace(/^item_/, "") || "").trim();
+    // A RPC obter_produtos_risco retorna a coluna item_id (não id_item).
+    const id = String(p.item_id || p.id_item || p.id?.replace(/^item_/, "") || "").trim();
     if (!id) continue;
 
     const nome = p.nome || id;
@@ -223,7 +231,7 @@ export async function getCentralRisco() {
       });
     }
 
-    const { cancelados: canc, taxa, pendentes: pend, comissaoPerdida } = metricasBase;
+    const { cancelados: canc, taxa, pendentes: pend, comissaoPerdida, faturamentoPerdido } = metricasBase;
 
     if (canc >= 2 && taxa >= 0.2) {
       registrarRisco(id, {
@@ -261,13 +269,21 @@ export async function getCentralRisco() {
       });
     }
 
-    if (comissaoPerdida >= 20) {
+    // Perda real quando a Shopee reportou; senão estimada pelo faturamento cancelado.
+    const perdaReal = comissaoPerdida >= 0.01;
+    const perda = perdaReal
+      ? comissaoPerdida
+      : Math.round(faturamentoPerdido * TAXA_COMISSAO_ESTIMADA * 100) / 100;
+
+    if (perda >= 10) {
       registrarRisco(id, {
         id: `comissao_perdida_${id}`,
-        nivel: "aviso",
+        nivel: perda >= 50 ? "critico" : "aviso",
         categoria: "comissao_perdida",
         titulo: nome,
-        mensagem: `R$ ${comissaoPerdida.toFixed(2)} em comissão perdida por cancelamentos.`,
+        mensagem: perdaReal
+          ? `R$ ${perda.toFixed(2)} em comissão perdida por cancelamentos.`
+          : `≈ R$ ${perda.toFixed(2)} de comissão perdida (R$ ${faturamentoPerdido.toFixed(2)} em vendas canceladas).`,
         itemId: id,
         loja: p.loja,
         link: p.link_shopee || "",
@@ -281,9 +297,14 @@ export async function getCentralRisco() {
   }
 
   const itens = Object.values(itensAgrupados);
+  for (const item of itens) {
+    const { valor, estimado } = prejuizoDoItem(item);
+    item.prejuizo = valor;
+    item.prejuizoEstimado = estimado;
+  }
   itens.sort((a, b) => scoreRisco(b) - scoreRisco(a));
 
-  const prejuizoTotal = itens.reduce((s, i) => s + estimarPrejuizoItem(i), 0);
+  const prejuizoTotal = Math.round(itens.reduce((s, i) => s + (i.prejuizo || 0), 0) * 100) / 100;
 
   return {
     total: itens.length,
