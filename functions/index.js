@@ -324,35 +324,26 @@ async function runMetaSync({ datePreset }) {
     console.log(`[metaSync] ${metaAdsIgnorados} anúncios inalterados (write omitido)`);
   }
 
-  const demoRef = db.collection("meta_demographics").doc(importacaoId);
-  batch.set(demoRef, {
-    importacaoId,
-    periodo: datePreset,
-    ageGender: formatAgeGenderAgg(ageGenderAgg),
-    region: formatRegionAgg(regionAgg),
-    fonte: "meta_api_backend",
-    updatedAt: FieldValue.serverTimestamp(),
-    importadoEm: FieldValue.serverTimestamp(),
-  });
+  // PATCH 2026-07-04: meta_demographics e importacoes não vão mais pro Firestore —
+  // destino único é o Supabase (política "escrever só no Supabase"). O batch só é
+  // commitado se algum caminho legado ainda tiver enfileirado writes.
+  if (count > 0) await batch.commit();
 
-  batch.set(importRef, {
-    tipo: "meta_ads",
-    fonte: "api_backend",
-    periodo: datePreset,
-    status: "sucesso",
-    linhasProcessadas: ads.length,
-    erros: errors,
-    duracaoMs: Date.now() - startedAt,
-    importadoEm: FieldValue.serverTimestamp(),
-  });
-
-  await batch.commit();
-
-  // Supabase Dual-Write para Meta Ads e Demografia
+  // Supabase Write para Meta Ads, Demografia e log de importação
   if (supabase) {
     const metaAdsToSupabase = metaAdsPending.map(p => ({ tabela: "meta_ads", id: p.ref.id, data: p.payload }));
     const demoToSupabase = [{ tabela: "meta_demographics", id: importacaoId, data: { importacaoId, periodo: datePreset, ageGender: formatAgeGenderAgg(ageGenderAgg), region: formatRegionAgg(regionAgg) } }];
-    await syncToSupabase(supabase, [...metaAdsToSupabase, ...demoToSupabase], []).catch(console.error);
+    const importToSupabase = [{ tabela: "importacoes", id: importacaoId, data: {
+      tipo: "meta_ads",
+      fonte: "api_backend",
+      periodo: datePreset,
+      status: "sucesso",
+      linhasProcessadas: ads.length,
+      erros: errors,
+      duracaoMs: Date.now() - startedAt,
+      importadoEm: new Date().toISOString(),
+    } }];
+    await syncToSupabase(supabase, [...metaAdsToSupabase, ...demoToSupabase, ...importToSupabase], []).catch(console.error);
   }
 
   await touchImportacoesLatestBackend("meta_ads", importacaoId);
@@ -4724,8 +4715,9 @@ async function runShopeeSync({
     }
   }
 
-  if (!(allNodes.length === 0 && label === "incremental_cursor")) {
-    state.batch.set(importRef, {
+  // PATCH 2026-07-04: log de importação só no Supabase (política "escrever só no Supabase")
+  if (!(allNodes.length === 0 && label === "incremental_cursor") && supabase) {
+    await syncToSupabase(supabase, [{ tabela: "importacoes", id: importacaoId, data: {
       tipo: "shopee_venda",
       fonte: "api_backend",
       modo: dailyOnly ? "daily_only" : "append",
@@ -4739,9 +4731,8 @@ async function runShopeeSync({
       subIdsUnicos: Object.keys(subIdMap).length,
       duracaoMs: Date.now() - startedAt,
       paginas: pageCount,
-      importadoEm: FieldValue.serverTimestamp(),
-    });
-    state.count++;
+      importadoEm: new Date().toISOString(),
+    } }], []).catch(console.error);
   }
 
   // Atualiza o cursor SÓ se a sync rodou até o fim sem exceção.
@@ -4952,16 +4943,22 @@ async function runShopeeSync({
         ? 30 * 60 * 1000
         : 4 * 60 * 60 * 1000;
 
-    // REVERTED PATCH 2026-06-26: Rollup mensal reativado, agora consultando Supabase 
-    // diretamente para evitar estouro de limite de leitura no Firestore.
-    try {
-      const r = await refreshMonthlyBucketsForDates(db, supabase, diasRollup, { throttleMs });
-      if (r?.length) {
-        const summary = r.map((x) => x.skipped ? `${x.monthKey}(skip)` : x.monthKey).join(", ");
-        console.log(`[monthlyRollup] ${label}:`, summary);
+    // PATCH 2026-07-04: rollup mensal DESLIGADO por padrão — só escreve no Firebase.
+    // Ninguém lê os buckets painel_resumo/subid_mensal/produto_mensal de lá:
+    // loadMonthlyBucketData (front) retorna null e os agregados mensais vêm das
+    // views do Supabase em tempo real. Além do custo, o doc subid_mensal/2026-06
+    // estourou o limite de índices do Firestore ("too many index entries") e
+    // rejeitava todo Commit. Para reativar: ENABLE_MONTHLY_ROLLUP=true no .env.
+    if (process.env.ENABLE_MONTHLY_ROLLUP === "true") {
+      try {
+        const r = await refreshMonthlyBucketsForDates(db, supabase, diasRollup, { throttleMs });
+        if (r?.length) {
+          const summary = r.map((x) => x.skipped ? `${x.monthKey}(skip)` : x.monthKey).join(", ");
+          console.log(`[monthlyRollup] ${label}:`, summary);
+        }
+      } catch (err) {
+        console.warn("[monthlyRollup] falhou:", err?.message || err);
       }
-    } catch (err) {
-      console.warn("[monthlyRollup] falhou:", err?.message || err);
     }
   }
   if (importacaoId && !(allNodes.length === 0 && label === "incremental_cursor")) {
