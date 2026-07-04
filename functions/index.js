@@ -8268,6 +8268,9 @@ exports.claudeDailyAnalysis = onSchedule(
     secrets: ['ANTHROPIC_API_KEY'],
     timeoutSeconds: 300,
     memory: '512MiB',
+    // Re-tenta em falha transitória (API fora, timeout). runClaudeAnalysis é
+    // idempotente: se o relatório do dia já existe, a re-execução vira no-op.
+    retryCount: 3,
   },
   async () => {
     const startedAt = Date.now();

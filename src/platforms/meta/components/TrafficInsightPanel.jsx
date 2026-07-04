@@ -73,7 +73,7 @@ function HeaderHero({ data, modelo, onRefresh, refreshing, onCopy, copied, onTog
               </span>
             </div>
             <p className="text-indigo-100/80 text-xs md:text-sm mt-0.5 font-medium">
-              Diagnóstico do portfólio gerado por IA — focado nos 2 últimos dias fechados (D-1 e D-2)
+              Diagnóstico diário automático (10h) — decisões no último dia fechado, tendência de 7 e 14 dias
             </p>
           </div>
         </div>
@@ -196,9 +196,14 @@ function RoiBar({ roi }) {
   );
 }
 
+const TABLE_PREVIEW_ROWS = 8;
+
 function CampaignsTable({ campaigns }) {
+  const [showAll, setShowAll] = useState(false);
   if (!campaigns || campaigns.length === 0) return null;
   const sorted = [...campaigns].sort((a, b) => b.roi - a.roi);
+  const visible = showAll ? sorted : sorted.slice(0, TABLE_PREVIEW_ROWS);
+  const hidden = sorted.length - visible.length;
   return (
     <div className="rounded-2xl border border-slate-200 bg-white overflow-hidden shadow-sm">
       <div className="px-5 py-3.5 border-b border-slate-100 bg-gradient-to-r from-slate-50 to-white flex items-center gap-2">
@@ -219,7 +224,7 @@ function CampaignsTable({ campaigns }) {
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-50">
-            {sorted.map((c, i) => {
+            {visible.map((c, i) => {
               const cfg = STATUS_CFG[c.status];
               const cpc = c.cliques > 0 ? c.gasto / c.cliques : 0;
               return (
@@ -249,6 +254,16 @@ function CampaignsTable({ campaigns }) {
           </tbody>
         </table>
       </div>
+      {(hidden > 0 || showAll) && sorted.length > TABLE_PREVIEW_ROWS && (
+        <button
+          type="button"
+          onClick={() => setShowAll((v) => !v)}
+          className="w-full px-5 py-2.5 border-t border-slate-100 bg-slate-50/60 hover:bg-slate-100 text-xs font-bold text-slate-600 flex items-center justify-center gap-1.5 transition"
+        >
+          {showAll ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+          {showAll ? "Mostrar menos" : `Ver todas as ${sorted.length} campanhas (+${hidden})`}
+        </button>
+      )}
     </div>
   );
 }
@@ -312,13 +327,20 @@ function ResumoCard({ texto, totais }) {
 }
 
 function CampaignDetailCard({ bloco }) {
+  // Compacto por padrão: métricas + recomendação. Análise, impacto e passo a
+  // passo ficam atrás de "Ver detalhes" para não poluir a tela.
+  const [aberto, setAberto] = useState(false);
   const cfg = STATUS_CFG[bloco.status];
   const Icon = cfg.icon;
+  const steps = getExecutionSteps(bloco.status, bloco.nome);
+  const impact = getEstimatedImpact(bloco);
+  const temDetalhes = !!(bloco.analise || steps?.length || impact);
+
   return (
     <div className={`rounded-2xl border ${cfg.border} ${cfg.bg} overflow-hidden transition hover:shadow-md`}>
-      <div className={`px-5 py-3.5 border-b ${cfg.border} bg-white/60 backdrop-blur-sm flex items-center gap-3`}>
-        <div className={`w-9 h-9 rounded-lg bg-white border ${cfg.border} flex items-center justify-center ${cfg.text}`}>
-          <Icon size={16} />
+      <div className={`px-4 py-3 border-b ${cfg.border} bg-white/60 backdrop-blur-sm flex items-center gap-3`}>
+        <div className={`w-8 h-8 rounded-lg bg-white border ${cfg.border} flex items-center justify-center ${cfg.text}`}>
+          <Icon size={15} />
         </div>
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2 flex-wrap">
@@ -329,96 +351,94 @@ function CampaignDetailCard({ bloco }) {
           </div>
         </div>
         <div className="text-right shrink-0">
-          <div className={`text-xl font-extrabold tabular-nums ${cfg.textStrong}`}>
+          <div className={`text-lg font-extrabold tabular-nums ${cfg.textStrong}`}>
             {bloco.roi >= 0 ? "+" : ""}{bloco.roi.toFixed(2)}%
           </div>
-          <div className="text-[10px] text-slate-500 font-semibold uppercase tracking-wider">ROI</div>
+          <div className="text-[9px] text-slate-500 font-semibold uppercase tracking-wider">ROI</div>
         </div>
       </div>
 
-      <div className="p-5 space-y-4">
+      <div className="p-4 space-y-3">
         {(bloco.gasto != null || bloco.comissao != null || bloco.lucro != null) && (
-          <div className="grid grid-cols-3 gap-2">
+          <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1 text-xs tabular-nums">
             {bloco.gasto != null && (
-              <div className="rounded-lg bg-white border border-slate-200 p-2.5">
-                <div className="text-[10px] uppercase tracking-wider font-bold text-slate-500">Gasto</div>
-                <div className="text-sm font-bold text-slate-800 tabular-nums">{fmt(bloco.gasto)}</div>
-              </div>
+              <span className="text-slate-600">Gasto <b className="text-slate-800">{fmt(bloco.gasto)}</b></span>
             )}
             {bloco.comissao != null && (
-              <div className="rounded-lg bg-white border border-slate-200 p-2.5">
-                <div className="text-[10px] uppercase tracking-wider font-bold text-slate-500">Comissão</div>
-                <div className="text-sm font-bold text-slate-800 tabular-nums">{fmt(bloco.comissao)}</div>
-              </div>
+              <>
+                <span className="text-slate-300">→</span>
+                <span className="text-slate-600">Comissão <b className="text-slate-800">{fmt(bloco.comissao)}</b></span>
+              </>
             )}
             {bloco.lucro != null && (
-              <div className={`rounded-lg bg-white border p-2.5 ${bloco.lucro >= 0 ? "border-emerald-200" : "border-rose-200"}`}>
-                <div className="text-[10px] uppercase tracking-wider font-bold text-slate-500">
-                  {bloco.lucro >= 0 ? "Lucro" : "Prejuízo"}
-                </div>
-                <div className={`text-sm font-bold tabular-nums ${bloco.lucro >= 0 ? "text-emerald-700" : "text-rose-700"}`}>
-                  {bloco.lucro >= 0 ? "+" : ""}{fmt(bloco.lucro)}
-                </div>
-              </div>
+              <>
+                <span className="text-slate-300">→</span>
+                <span className={bloco.lucro >= 0 ? "text-emerald-700" : "text-rose-700"}>
+                  {bloco.lucro >= 0 ? "Lucro" : "Prejuízo"} <b>{bloco.lucro >= 0 ? "+" : ""}{fmt(bloco.lucro)}</b>
+                </span>
+              </>
             )}
           </div>
         )}
 
-        {bloco.analise && (
+        {bloco.recomendacao && (
+          <div className={`rounded-xl border ${cfg.border} bg-white/70 p-3 flex items-start gap-2.5`}>
+            <div className={`shrink-0 w-6 h-6 rounded-lg ${cfg.bgSolid} border ${cfg.border} flex items-center justify-center ${cfg.text}`}>
+              {bloco.status === "critical" ? <Pause size={12} /> : bloco.status === "warn" ? <AlertTriangle size={12} /> : <Zap size={12} />}
+            </div>
+            <div className="min-w-0 text-[13px] text-slate-800 leading-snug font-medium">
+              <ReactMarkdown remarkPlugins={[remarkGfm]}>{bloco.recomendacao}</ReactMarkdown>
+            </div>
+          </div>
+        )}
+
+        {aberto && bloco.analise && (
           <div className="text-sm text-slate-700 leading-relaxed">
-            <div className="text-[10px] uppercase tracking-wider font-bold text-slate-500 mb-1.5">Análise</div>
+            <div className="text-[10px] uppercase tracking-wider font-bold text-slate-500 mb-1">Análise</div>
             <div className="prose prose-sm prose-slate max-w-none prose-p:my-1 prose-strong:text-slate-900">
               <ReactMarkdown remarkPlugins={[remarkGfm]}>{bloco.analise}</ReactMarkdown>
             </div>
           </div>
         )}
 
-        {bloco.recomendacao && (
-          <div className={`rounded-xl border ${cfg.border} bg-white/70 p-3.5 flex items-start gap-3`}>
-            <div className={`shrink-0 w-7 h-7 rounded-lg ${cfg.bgSolid} border ${cfg.border} flex items-center justify-center ${cfg.text}`}>
-              {bloco.status === "critical" ? <Pause size={13} /> : bloco.status === "warn" ? <AlertTriangle size={13} /> : <Zap size={13} />}
-            </div>
-            <div className="min-w-0">
-              <div className={`text-[10px] uppercase tracking-wider font-bold mb-0.5 ${cfg.text}`}>Recomendação</div>
-              <div className="text-sm text-slate-800 leading-snug font-medium">
-                <ReactMarkdown remarkPlugins={[remarkGfm]}>{bloco.recomendacao}</ReactMarkdown>
+        {aberto && (impact || steps?.length > 0) && (
+          <div className="pt-3 border-t border-slate-100 grid grid-cols-1 md:grid-cols-2 gap-4">
+            {impact && (
+              <div>
+                <div className={`text-[10px] uppercase tracking-wider font-bold mb-1 ${cfg.text}`}>
+                  {impact.label}
+                </div>
+                <div className={`text-lg font-extrabold tabular-nums ${cfg.textStrong}`}>
+                  {fmt(impact.diario)} <span className="text-xs font-semibold text-slate-500">/ dia</span>
+                </div>
+                <div className="text-[11px] text-slate-500 mt-1">{impact.descricao}</div>
               </div>
-            </div>
+            )}
+            {steps?.length > 0 && (
+              <div>
+                <div className="text-[10px] uppercase tracking-wider font-bold mb-1.5 text-slate-500">
+                  Passo a passo ({cfg.actionVerb})
+                </div>
+                <ol className="text-xs text-slate-600 space-y-1 list-decimal pl-4 marker:text-slate-400 marker:font-bold">
+                  {steps.map((s, i) => (
+                    <li key={i}>{s}</li>
+                  ))}
+                </ol>
+              </div>
+            )}
           </div>
         )}
 
-        {(() => {
-          const steps = getExecutionSteps(bloco.status, bloco.nome);
-          const impact = getEstimatedImpact(bloco);
-          if (!steps?.length && !impact) return null;
-          return (
-            <div className="mt-4 pt-4 border-t border-slate-100 grid grid-cols-1 md:grid-cols-2 gap-4">
-              {impact && (
-                <div>
-                  <div className={`text-[10px] uppercase tracking-wider font-bold mb-1 ${cfg.text}`}>
-                    {impact.label}
-                  </div>
-                  <div className={`text-lg font-extrabold tabular-nums ${cfg.textStrong}`}>
-                    {fmt(impact.diario)} <span className="text-xs font-semibold text-slate-500">/ dia</span>
-                  </div>
-                  <div className="text-[11px] text-slate-500 mt-1">{impact.descricao}</div>
-                </div>
-              )}
-              {steps?.length > 0 && (
-                <div>
-                  <div className="text-[10px] uppercase tracking-wider font-bold mb-1.5 text-slate-500">
-                    Passo a passo ({cfg.actionVerb})
-                  </div>
-                  <ol className="text-xs text-slate-600 space-y-1 list-decimal pl-4 marker:text-slate-400 marker:font-bold">
-                    {steps.map((s, i) => (
-                      <li key={i}>{s}</li>
-                    ))}
-                  </ol>
-                </div>
-              )}
-            </div>
-          );
-        })()}
+        {temDetalhes && (
+          <button
+            type="button"
+            onClick={() => setAberto((v) => !v)}
+            className={`w-full flex items-center justify-center gap-1 text-[11px] font-bold py-1.5 rounded-lg border border-transparent hover:border-slate-200 hover:bg-white/70 transition ${cfg.text}`}
+          >
+            {aberto ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+            {aberto ? "Recolher" : "Ver detalhes"}
+          </button>
+        )}
       </div>
     </div>
   );

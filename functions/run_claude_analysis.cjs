@@ -22,7 +22,9 @@ if (fs.existsSync(envPathLocal)) {
 
 const sup = createClient(env.VITE_SUPABASE_URL || env.SUPABASE_URL, env.VITE_SUPABASE_SERVICE_ROLE_KEY || env.VITE_SUPABASE_ANON_KEY || env.SUPABASE_SERVICE_ROLE_KEY);
 const ANTHROPIC_API_KEY = env.ANTHROPIC_API_KEY;
-const MODEL_NAME = "claude-sonnet-4-6";
+// Haiku 4.5: 3x mais barato que Sonnet ($1/$5 vs $3/$15 por M tokens) e suficiente
+// aqui — as decisões já vêm calculadas pelo motor de regras; a IA só interpreta e formata.
+const MODEL_NAME = "claude-haiku-4-5";
 
 // Limiares da regra de negócio (alinhados com o cliente em 2026-06-29).
 // Centralizados aqui para auditoria e ajuste sem caçar pelo código.
@@ -93,11 +95,14 @@ async function getAggregatedData(opts = {}) {
     lookbackDate.setUTCDate(hojeDate.getUTCDate() - (LOOKBACK_PRIMEIRO_GASTO - 1));
     const dataLookback = lookbackDate.toISOString().split('T')[0];
 
-    const subidData = await fetchAllRows(() => sup.from('subid_daily')
+    // 14 dias de subid_daily: os 7 mais recentes alimentam o motor de decisão;
+    // a janela cheia vira o agregado de tendência (roi_14d) que dá contexto à IA.
+    const subidDataLookback = await fetchAllRows(() => sup.from('subid_daily')
         .select('*')
-        .gte('data', data7Dias)
+        .gte('data', dataLookback)
         .lte('data', dataHoje)
         .order('data').order('subid'));
+    const subidData = subidDataLookback.filter(r => r.data >= data7Dias);
 
     const metaDataLookback = await fetchAllRows(() => sup.from('meta_ads_daily')
         .select('*')
@@ -107,6 +112,19 @@ async function getAggregatedData(opts = {}) {
 
     const metaData = metaDataLookback.filter(r => r.data >= data7Dias);
 
+    // Gasto DEPOIS do dia analisado (meta_ads_daily sincroniza a cada 6h, sem o
+    // delay da Shopee) — é a evidência de que a campanha segue rodando na Meta.
+    // Campanha pausada pelo usuário para de gastar e não pode ser "reativada"
+    // só porque o dia analisado (1-2 dias atrás) ainda tinha gasto.
+    const metaDataPosDia = await fetchAllRows(() => sup.from('meta_ads_daily')
+        .select('data, subid, gasto')
+        .gt('data', dataHoje)
+        .order('data').order('subid'));
+    const gastaAposDia = new Set(
+        metaDataPosDia.filter(r => Number(r.gasto || 0) > 0).map(r => r.subid)
+    );
+
+    const pausadasConfirmadas = [];
     const activeAdsMap = {};
     if (opts.usarSubidsComGasto) {
         // Reprocessar histórico: considera todos os subids com atividade em D-1.
@@ -162,7 +180,15 @@ async function getAggregatedData(opts = {}) {
                     await sup.from('meta_ads').update({ status: 'Ativo' }).eq('subid_vinculado', subid);
                 }
             } else if (reg) {
-                // Estava PAUSADA (ou sem fase) mas voltou a gastar → reinicia ciclo de TESTE
+                // Estava PAUSADA (ou sem fase) mas gastou no dia analisado. O gasto
+                // pode ser ANTERIOR à pausa do usuário na Meta (a análise roda 1-2
+                // dias atrás). Só reativa se seguiu gastando depois do dia analisado;
+                // senão a pausa já foi executada — não reciclar nem recomendar de novo.
+                if (!gastaAposDia.has(subid)) {
+                    console.log(`[AUTO] ${subid} pausada e sem gasto após ${dataHoje} — mantida fora da análise.`);
+                    pausadasConfirmadas.push(subid);
+                    continue;
+                }
                 const inicio = primeiroGasto[subid] || dataHoje;
                 console.log(`[AUTO] Reativando ${subid} (fase ${reg.fase || 'nula'} → TESTE, início ${inicio})`);
                 await sup.from('meta_ads')
@@ -336,16 +362,32 @@ async function getAggregatedData(opts = {}) {
             }
         }
 
-        // Série diária dos últimos 7 dias — Claude consegue ver tendência, não só snapshot
-        const serie_7d = mSubid
-            .filter(m => m.gasto > 0 || m.comissao > 0)
-            .map(m => ({
-                data: m.data,
-                gasto: parseFloat((m.gasto || 0).toFixed(2)),
-                comissao: parseFloat((m.comissao || 0).toFixed(2)),
-                cliques: m.cliques || 0,
-                roi: m.roi !== null ? parseFloat(m.roi.toFixed(1)) : null,
-            }));
+        // Tendência de 14 dias em 3 números (barato em tokens) — distingue
+        // "semana ruim de campanha boa" de "sempre foi ruim".
+        const gasto14 = metaDataLookback
+            .filter(r => r.subid === subid)
+            .reduce((s, r) => s + Number(r.gasto || 0), 0);
+        const comissao14 = subidDataLookback
+            .filter(r => r.subid === subid)
+            .reduce((s, r) => s + Number(r.comissoes_estimadas || r.comissoes || 0), 0);
+        const roi_14d = gasto14 > 0
+            ? parseFloat((((comissao14 - gasto14) / gasto14) * 100).toFixed(1))
+            : null;
+
+        // Série diária só para quem gera bloco no relatório (ação/observação) —
+        // campanha MANTER usa apenas os escalares da tabela, economizando tokens.
+        const precisaSerie = ['APROVAR', 'PAUSAR', 'ATENCAO', 'AGUARDAR'].includes(decisao);
+        const serie_7d = precisaSerie
+            ? mSubid
+                .filter(m => m.gasto > 0 || m.comissao > 0)
+                .map(m => ({
+                    data: m.data,
+                    gasto: parseFloat((m.gasto || 0).toFixed(2)),
+                    comissao: parseFloat((m.comissao || 0).toFixed(2)),
+                    cliques: m.cliques || 0,
+                    roi: m.roi !== null ? parseFloat(m.roi.toFixed(1)) : null,
+                }))
+            : undefined;
 
         resultados.push({
             subid,
@@ -354,6 +396,9 @@ async function getAggregatedData(opts = {}) {
             roi_hoje: parseFloat(roi_hoje.toFixed(2)),
             roi_ontem: parseFloat(roi_ontem.toFixed(2)),
             roi_medio_7d: parseFloat(roi_medio_7d.toFixed(2)),
+            roi_14d,
+            gasto_14d: parseFloat(gasto14.toFixed(2)),
+            comissao_14d: parseFloat(comissao14.toFixed(2)),
             dias_ruins_7d,
             dias_com_dados_7d,
             gasto_hoje: mHoje.gasto,
@@ -361,11 +406,11 @@ async function getAggregatedData(opts = {}) {
             cliques_hoje,
             decisao,
             motivo,
-            serie_7d,
+            ...(serie_7d ? { serie_7d } : {}),
         });
     });
 
-    return { dataRef: dataHoje, campanhas: resultados };
+    return { dataRef: dataHoje, campanhas: resultados, pausadasConfirmadas };
 }
 
 async function runClaudeAnalysis() {
@@ -385,7 +430,7 @@ async function runClaudeAnalysis() {
     }
 
     console.log("Coletando dados e calculando decisões...");
-    const { dataRef, campanhas: dados } = await getAggregatedData();
+    const { dataRef, campanhas: dados, pausadasConfirmadas = [] } = await getAggregatedData();
     const dataHojeRef = dataRef || dataRelatorio;
     console.log(`Data analisada: ${dataHojeRef} — ${dados.length} campanhas com dados recentes.`);
 
@@ -464,6 +509,8 @@ async function runClaudeAnalysis() {
         em_monitoramento: dados.filter(d => d.fase === 'MONITORAMENTO').length,
         pausadas_hoje: dados.filter(d => d.decisao === 'PAUSAR').length,
         aprovadas_hoje: dados.filter(d => d.decisao === 'APROVAR').length,
+        pausadas_confirmadas: pausadasConfirmadas.length,
+        pausadas_confirmadas_lista: pausadasConfirmadas.slice(0, 20),
         gasto_total: parseFloat(totalGasto.toFixed(2)),
         comissao_total: parseFloat(totalComissao.toFixed(2)),
         lucro_liquido: parseFloat(lucroLiquido.toFixed(2)),
@@ -484,7 +531,15 @@ SOBRE O PAYLOAD
 - \`portfolio.campanhas_avaliadas\`: TODAS analisadas pelo motor (incluindo as estáveis).
 - \`portfolio.campanhas_no_ranking\`: as que aparecem em \`campanhas\` (filtramos as MANTER sem atividade em D-1 — são as estáveis e sem mudança).
 - \`portfolio.campanhas_omitidas_estaveis\`: quantas estáveis ficaram de fora — mencione no Resumo se houver, não invente "faltam dados".
+- \`portfolio.pausadas_confirmadas\`/\`pausadas_confirmadas_lista\`: campanhas pausadas em dias
+  anteriores que continuam sem gastar — pendência JÁ RESOLVIDA. Se houver, cite em UMA única
+  linha no fim do Resumo ("Já pausadas e sem gasto novo: \`a\`, \`b\` — nenhuma ação necessária")
+  e NÃO as inclua no ranking, nas ações, na observação nem no plano.
 - Os totais financeiros (gasto/comissão/lucro/ROI) cobrem TODO o portfólio avaliado, não só o ranking.
+- \`roi_14d\`/\`gasto_14d\`/\`comissao_14d\`: tendência de 14 dias. Use nos blocos das seções 3 e 4
+  para diferenciar "semana ruim de campanha historicamente boa" (roi_14d alto, roi_medio_7d baixo)
+  de "sempre foi ruim" (ambos baixos). NÃO adicione coluna nova na tabela do ranking.
+- \`serie_7d\` só vem nas campanhas com decisão de ação/observação — as MANTER usam os escalares.
 
 REGRAS DE DECISÃO (já calculadas no campo \`decisao\` de cada campanha — não recalcule, apenas explique):
 
@@ -537,6 +592,7 @@ Mesmo formato EXATO da seção 3, um bloco para cada campanha com decisao ATENCA
 3-6 bullets priorizados (Pausar urgente > Reduzir budget > Escalar quem está no azul). Inclua o subid em crase e uma ação concreta.
 
 REGRAS DE FORMATAÇÃO
+- Seja enxuto: análise de cada bloco em no máximo 3 linhas, sem repetir números que já estão na tabela do ranking.
 - Subids sempre em crase: \`flare01\`, nunca soltos.
 - ROI sempre com sinal e %: "+12,3%" ou "-43,4%".
 - Valores em R$ com vírgula decimal e ponto milhar: "R$ 1.234,56".
