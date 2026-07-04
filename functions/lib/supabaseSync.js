@@ -138,10 +138,22 @@ async function syncToSupabase(supabase, upserts, deletes) {
         case "meta_ads":
           tabela = "meta_ads";
           onConflict = "ad_id";
+          // Colunas reais da tabela no Supabase (o spread antigo mandava chaves
+          // inexistentes tipo nomeAnuncio/valorUsado e o upsert falhava em silêncio,
+          // congelando status/subid_vinculado). fase e data_inicio_fase são geridas
+          // pela análise IA e ficam de fora de propósito — upsert não as toca.
           mappedRows = rows.map(({ id, data }) => ({
-            ...data,
             ad_id: id,
-            updatedAt: new Date().toISOString()
+            nome_anuncio: data.nomeAnuncio || data.nome_anuncio || "",
+            campaign_id: data.campaignId || data.campaign_id || "",
+            campaign_name: data.campanha || data.campaign_name || "",
+            adset_id: data.adsetId || data.adset_id || "",
+            adset_name: data.conjuntoAnuncios || data.adset_name || "",
+            account_id: data._accountId || data.account_id || "",
+            status: data.status || "Pausado",
+            subid_vinculado: data.subid || null,
+            data_blob: data,
+            atualizado_em: new Date().toISOString(),
           }));
           break;
 

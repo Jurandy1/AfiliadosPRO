@@ -115,22 +115,25 @@ export function parseCampanhaBlocos(md) {
     const cur = matches[i];
     const end = i + 1 < matches.length ? matches[i + 1].start : md.length;
     const trecho = md.slice(cur.start, end);
+    // A IA costuma decorar com negrito ("**Gasto** R$ ...") — remover os ** antes
+    // de extrair métricas, senão \s+ não casa e gasto/lucro viram null.
+    const plain = trecho.replace(/\*\*/g, "");
 
-    const gMatch = trecho.match(/Gasto\s+R\$?\s*([\d.,]+)/i);
-    const cMatch = trecho.match(/Comiss[ãa]o\s+R\$?\s*([\d.,]+)/i);
-    const pMatch = trecho.match(/Preju[íi]zo:\s*R\$?\s*([+-]?[\d.,]+)/i);
-    const lMatch = trecho.match(/Lucro:\s*R\$?\s*([+-]?[\d.,]+)/i);
+    const gMatch = plain.match(/Gasto:?\s+R\$?\s*([+-]?[\d.,]+)/i);
+    const cMatch = plain.match(/Comiss[ãa]o:?\s+R\$?\s*([+-]?[\d.,]+)/i);
+    const pMatch = plain.match(/Preju[íi]zo:?\s*R\$?\s*([+-]?[\d.,]+)/i);
+    const lMatch = plain.match(/Lucro:?\s*R\$?\s*([+-]?[\d.,]+)/i);
 
-    const recMatch = trecho.match(/Recomenda[çc][ãa]o:\s*([^\n]+(?:\n(?!\s*[-—•*])[^\n]+)*)/i);
+    const recMatch = plain.match(/Recomenda[çc][ãa]o:\s*([^\n]+(?:\n(?!\s*[-—•*])[^\n]+)*)/i);
 
     let analise = "";
-    const afterHeader = trecho.replace(cur.full, "").trim();
+    const afterHeader = plain.replace(cur.full.replace(/\*\*/g, ""), "").trim();
     const recIdx = afterHeader.search(/Recomenda[çc][ãa]o:/i);
     if (recIdx > 0) analise = afterHeader.slice(0, recIdx).trim();
     else analise = afterHeader.trim();
 
     analise = analise
-      .replace(/Gasto\s+R\$?\s*[\d.,]+[\s→\-*]*Comiss[ãa]o\s+R\$?\s*[\d.,]+[\s→\-*]*(Preju[íi]zo|Lucro):\s*R\$?\s*[+-]?[\d.,]+\s*\*?/i, "")
+      .replace(/Gasto:?\s+R\$?\s*[+-]?[\d.,]+[\s→\-*]*Comiss[ãa]o:?\s+R\$?\s*[+-]?[\d.,]+[\s→\-*]*(Preju[íi]zo|Lucro):?\s*R\$?\s*[+-]?[\d.,]+\s*/i, "")
       .replace(/^[\s\-•*]+/gm, "")
       .trim();
 
