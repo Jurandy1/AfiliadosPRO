@@ -5203,6 +5203,56 @@ exports.shopeeMonthAutoSync = onSchedule(
 );
 
 // ═══════════════════════════════════════════════════════════════════════════
+//  2d) Monitor Dedicado de Publicação (Supabase Only) — a cada 1 hora
+// ═══════════════════════════════════════════════════════════════════════════
+exports.shopeeDataMonitor = onSchedule(
+  {
+    schedule: "0 * * * *", // Todo começo de hora (00:00, 01:00, 02:00, etc)
+    timeZone: "America/Sao_Paulo",
+    secrets: ["SHOPEE_APP_ID", "SHOPEE_SECRET"],
+    timeoutSeconds: 120,
+    memory: "256MB", // Muito leve, não processa/grava grandes volumes
+  },
+  async () => {
+    if (!supabase) {
+      console.warn("[shopeeDataMonitor] Supabase não configurado. Abortando.");
+      return;
+    }
+
+    const agora = Date.now();
+    const ontemStr = brtYesterdayYYYYMMDD();
+    const startTs = brtDateToUnixStart(ontemStr);
+    const endTs = brtDateToUnixEnd(ontemStr);
+
+    console.log(`[shopeeDataMonitor] Verificando dados de ontem (${ontemStr}) na API...`);
+
+    let nodes = 0;
+    try {
+      await waitNoScrollInterval("monitor_ontem");
+      const query = buildShopeeQuery(startTs, endTs, null, null);
+      const data = await shopeeFetch(query);
+      const report = data?.conversionReport || {};
+      nodes = (report.nodes || []).length;
+    } catch (e) {
+      console.error("[shopeeDataMonitor] Falha ao consultar API:", e?.message || e);
+      // Não registrar erro no polling detector, apenas logar. Se falhou, falhou.
+      return;
+    }
+
+    const duracaoMs = Date.now() - agora;
+    console.log(`[shopeeDataMonitor] Ontem (${ontemStr}): ${nodes} nodes retornados em ${duracaoMs}ms`);
+
+    // Registra silenciosamente no Supabase
+    await registrarSyncEvent(supabase, {
+      plataforma: "shopee",
+      label: "monitor_ontem",
+      nodes,
+      duracaoMs,
+    });
+  },
+);
+
+// ═══════════════════════════════════════════════════════════════════════════
 //  3) Backfill manual — disparo HTTP autenticado
 //     curl -H "Authorization: Bearer <META_SYNC_SECRET>" \
 //       "https://southamerica-east1-projetoafiliado-9ff07.cloudfunctions.net/shopeeBackfillNow?days=90"
