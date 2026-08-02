@@ -53,6 +53,7 @@ import {
 import { fmt, fmtNum } from "../../../utils/formatters";
 import BackupToast from "../components/backup/BackupToast";
 import BackupConfirmDialog from "../components/backup/BackupConfirmDialog";
+import BackupOverviewStats from "../components/backup/BackupOverviewStats";
 import BackupRefreshReportDialog from "../components/backup/BackupRefreshReportDialog";
 import LoadingSpinner from "../../../components/layout/LoadingSpinner";
 import SugestoesRoboGarimpo from "../components/backup/SugestoesRoboGarimpo";
@@ -1700,6 +1701,7 @@ function CardGrupo({ grupo, expandido, criterio, onCriterioChange, onToggleExpan
 
 export const BACKUP_INITIAL_TAB_KEY = "backup_initial_tab";
 export const BACKUP_EXPAND_GRUPO_KEY = "backup_expand_grupo";
+export const BACKUP_LISTAGEM_PRESET_KEY = "backup_listagem_preset";
 
 const BACKUP_TABS = ["grupos", "cadastrar", "listagem", "similar", "garimpo", "recompra"];
 
@@ -1857,6 +1859,23 @@ export default function BackupPage() {
           {varrendoTudo ? "Varrendo links..." : "Varrer todas as ofertas"}
         </button>
       </div>
+
+      <BackupOverviewStats
+        refreshTrigger={refreshTrigger}
+        onOpenBackups={(preset) => {
+          try {
+            sessionStorage.setItem(BACKUP_LISTAGEM_PRESET_KEY, JSON.stringify(preset || {}));
+          } catch {
+            /* ignore */
+          }
+          setAba("listagem");
+          setRefreshTrigger((x) => x + 1);
+        }}
+        onOpenGrupos={() => {
+          setAba("grupos");
+          setRefreshTrigger((x) => x + 1);
+        }}
+      />
 
       <div className="flex gap-0.5 sm:gap-1 overflow-x-auto -mx-3 px-3 sm:mx-0 sm:px-0 border-b border-slate-200 pb-0.5 scrollbar-thin">
         {tabs.map((opt) => {

@@ -41,17 +41,77 @@ export async function salvarBackup(produto, opcoes = {}) {
   return dados;
 }
 
+// Heurística de nicho a partir do nome quando não há registro em `produtos`.
+// Cascata: (1) `produtos.categoria` (CSV oficial da Shopee) → (2) palavra-chave
+// no nome → (3) "Sem categoria". Só nível 1 do path.
+const NICHO_KEYWORDS = [
+  { nicho: "Roupas Femininas", termos: ["legging", "calca", "calça", "vestido", "blusa", "cropped", "top ", "conjunto ", "jaqueta", "bobojaco", "jeans", "shorts", "saia", "camiseta", "camisa"] },
+  { nicho: "Sapatos Femininos", termos: ["tenis", "tênis", "sandalia", "sandália", "chinelo", "sapatilha", "bota"] },
+  { nicho: "Acessórios de Moda", termos: ["bolsa", "mochila", "cinto", "oculos", "óculos", "colar", "brinco", "pulseira"] },
+  { nicho: "Beleza", termos: ["batom", "gloss", "esmalte", "perfume", "maquiagem", "sombra", "hidratante", "creme", "shampoo"] },
+  { nicho: "Saúde", termos: ["mascara facial", "protetor solar", "vitamina", "colágeno", "colageno", "absorvente"] },
+  { nicho: "Casa e Decoração", termos: ["toalha", "cortina", "almofada", "lençol", "lencol", "vaso", "quadro"] },
+  { nicho: "Esportes", termos: ["fitness", "academia", "treino", "yoga", "corrida"] },
+  { nicho: "Animais Domésticos", termos: ["pet ", "cachorro", "gato", "coleira", "racao", "ração"] },
+];
+
+function nichoDoNome(nome) {
+  const n = String(nome || "").toLowerCase();
+  if (!n) return null;
+  for (const { nicho, termos } of NICHO_KEYWORDS) {
+    if (termos.some((t) => n.includes(t))) return nicho;
+  }
+  return null;
+}
+
+function resolverNicho(nomeItem, categoriaProduto) {
+  if (categoriaProduto) {
+    const l1 = String(categoriaProduto).split(">")[0].trim();
+    if (l1) return l1;
+  }
+  const heur = nichoDoNome(nomeItem);
+  if (heur) return heur;
+  return "Sem categoria";
+}
+
+async function _mapCategoriasPorItemId(itemIds) {
+  const ids = [...new Set((itemIds || []).map((x) => String(x || "").trim()).filter(Boolean))];
+  if (!ids.length) return {};
+  const map = {};
+  // Split em chunks para evitar URL enorme em .in()
+  for (let i = 0; i < ids.length; i += 100) {
+    const chunk = ids.slice(i, i + 100);
+    const { data } = await supabase
+      .from("produtos")
+      .select("id_item,categoria")
+      .in("id_item", chunk);
+    for (const p of data || []) {
+      if (p?.id_item && p.categoria) map[String(p.id_item)] = String(p.categoria);
+    }
+  }
+  return map;
+}
+
 export async function listarBackups(opcoes = {}) {
   const { force = false } = opcoes;
   if (!force && _cacheValido(_cache.backups)) return _cache.backups.data;
-  
+
   const { data: snap } = await supabase.from("backup_produtos").select("id, data_blob, criado_em").order("criado_em", { ascending: false });
-  const items = (snap || []).map(d => {
-    const data = d.data_blob || {};
+  const raws = (snap || []).map((d) => ({ ...d, blob: d.data_blob || {} }));
+
+  const catMap = await _mapCategoriasPorItemId(raws.map((r) => r.blob.itemId || String(r.id || "").replace(/^item_/, "")));
+
+  const items = raws.map(({ id, blob, criado_em }) => {
+    const itemId = String(blob.itemId || id.replace(/^item_/, ""));
+    const categoriaFull = catMap[itemId] || null;
+    const nicho = resolverNicho(blob.nome || blob.apelido || "", categoriaFull);
     return {
-      docId: d.id, ...data,
-      cadastrado_em: data.cadastrado_em ? new Date(data.cadastrado_em) : (d.criado_em ? new Date(d.criado_em) : null),
-      ultima_verificacao: data.ultima_verificacao ? new Date(data.ultima_verificacao) : null,
+      docId: id, ...blob,
+      itemId,
+      categoria: categoriaFull,
+      nicho,
+      cadastrado_em: blob.cadastrado_em ? new Date(blob.cadastrado_em) : (criado_em ? new Date(criado_em) : null),
+      ultima_verificacao: blob.ultima_verificacao ? new Date(blob.ultima_verificacao) : null,
     };
   });
   items.sort((a, b) => {
@@ -106,6 +166,10 @@ export function buildRefreshDiff(antes, apiRes = {}) {
   const itemId = String(antes?.itemId || novo.itemId || "");
   const precoAntes = Number(antes?.preco || 0);
   const precoDepois = Number(novo.preco ?? precoAntes);
+  const precoMinAntes = Number(antes?.precoMin ?? antes?.preco ?? 0);
+  const precoMaxAntes = Number(antes?.precoMax ?? antes?.preco ?? 0);
+  const precoMinDepois = Number(novo.precoMin ?? novo.preco ?? precoMinAntes);
+  const precoMaxDepois = Number(novo.precoMax ?? novo.preco ?? precoMaxAntes);
   const comissaoAntes = Number(antes?.comissao_pct || 0);
   const comissaoDepois = Number(novo.comissao_pct ?? comissaoAntes);
   const precoMudou = Number.isFinite(precoAntes) && Number.isFinite(precoDepois)
@@ -129,6 +193,10 @@ export function buildRefreshDiff(antes, apiRes = {}) {
     status: apiRes?.status || (ok ? "ok" : "erro"),
     precoAntes,
     precoDepois: naoEncontrado ? precoAntes : precoDepois,
+    precoMinAntes,
+    precoMaxAntes,
+    precoMinDepois: naoEncontrado ? precoMinAntes : precoMinDepois,
+    precoMaxDepois: naoEncontrado ? precoMaxAntes : precoMaxDepois,
     precoMudou: !naoEncontrado && precoMudou,
     comissaoAntes,
     comissaoDepois: naoEncontrado ? comissaoAntes : comissaoDepois,
@@ -258,6 +326,10 @@ export async function atualizarBackupsEmLote(itemIds, { delayMs = 1500, onItemDo
         mudou: false,
         precoAntes: Number(antes?.preco || 0),
         precoDepois: Number(antes?.preco || 0),
+        precoMinAntes: Number(antes?.precoMin ?? antes?.preco ?? 0),
+        precoMaxAntes: Number(antes?.precoMax ?? antes?.preco ?? 0),
+        precoMinDepois: Number(antes?.precoMin ?? antes?.preco ?? 0),
+        precoMaxDepois: Number(antes?.precoMax ?? antes?.preco ?? 0),
         precoMudou: false,
         comissaoAntes: Number(antes?.comissao_pct || 0),
         comissaoDepois: Number(antes?.comissao_pct || 0),
@@ -429,13 +501,23 @@ async function fetchBackupProdutosMap(itemIds = []) {
   const docIds = [...new Set((itemIds || []).map(id => String(id || "").trim()).filter(Boolean).map(id => (id.startsWith("item_") ? id : `item_${id}`)))];
   const map = {};
   if (!docIds.length) return map;
+  const rawItemIds = [];
   for (let i = 0; i < docIds.length; i += 30) {
     const chunk = docIds.slice(i, i + 30);
     const { data: snap } = await supabase.from("backup_produtos").select("id, data_blob").in("id", chunk);
     (snap || []).forEach(d => {
       const itemId = d.id.replace(/^item_/, "");
       map[itemId] = d.data_blob || {};
+      rawItemIds.push(itemId);
     });
+  }
+  // Enriquece cada blob com categoria (produtos.categoria) e nicho resolvido.
+  const catMap = await _mapCategoriasPorItemId(rawItemIds);
+  for (const itemId of Object.keys(map)) {
+    const blob = map[itemId];
+    const categoriaFull = catMap[itemId] || null;
+    blob.categoria = categoriaFull;
+    blob.nicho = resolverNicho(blob.nome || blob.apelido || "", categoriaFull);
   }
   return map;
 }

@@ -12,8 +12,10 @@ import {
   listarBackups,
   removerBackup,
 } from "../../repositories/backupRepository";
-import { fmt, fmtNum } from "../../../../utils/formatters";
+import { fmt, fmtNum, fmtPrecoRange, temFaixaPreco } from "../../../../utils/formatters";
 import BackupRefreshReportDialog from "./BackupRefreshReportDialog";
+
+const BACKUP_LISTAGEM_PRESET_KEY = "backup_listagem_preset";
 
 function formatTempoAtras(date) {
   if (!date) return "—";
@@ -43,6 +45,10 @@ export default function BackupListagemTab({ refreshTrigger, showToast, askConfir
   const [filtroAlerta, setFiltroAlerta] = useState("todos");
   const [filtroGrupo, setFiltroGrupo] = useState("todos");
   const [filtroCategoria, setFiltroCategoria] = useState("todas");
+  const [filtroStatusApi, setFiltroStatusApi] = useState("todos");
+  const [filtroVariantes, setFiltroVariantes] = useState("todos");
+  const [filtroPeriodo, setFiltroPeriodo] = useState("todos");
+  const [filtroSinal, setFiltroSinal] = useState("todos");
   const [ordenacao, setOrdenacao] = useState("recentes");
   const [expandirFiltros, setExpandirFiltros] = useState(false);
   const [pagina, setPagina] = useState(1);
@@ -68,14 +74,39 @@ export default function BackupListagemTab({ refreshTrigger, showToast, askConfir
     carregar();
   }, [refreshTrigger]);
 
+  // Presets vindos do painel de KPIs (BackupOverviewStats).
+  useEffect(() => {
+    let preset = null;
+    try {
+      const raw = sessionStorage.getItem(BACKUP_LISTAGEM_PRESET_KEY);
+      if (raw) {
+        preset = JSON.parse(raw);
+        sessionStorage.removeItem(BACKUP_LISTAGEM_PRESET_KEY);
+      }
+    } catch { /* ignore */ }
+    if (!preset || typeof preset !== "object") return;
+    if (typeof preset.busca === "string") setBusca(preset.busca);
+    if (preset.alertas) setFiltroAlerta(preset.alertas);
+    if (preset.grupo) setFiltroGrupo(preset.grupo);
+    if (preset.categoria) setFiltroCategoria(preset.categoria);
+    if (preset.status) setFiltroStatusApi(preset.status);
+    if (preset.variantes) setFiltroVariantes(preset.variantes);
+    if (preset.periodo) setFiltroPeriodo(preset.periodo);
+    if (preset.sinal) setFiltroSinal(preset.sinal);
+    if (preset.ordenacao) setOrdenacao(preset.ordenacao);
+    if (preset.busca || preset.status || preset.variantes || preset.periodo || preset.sinal) {
+      setExpandirFiltros(true);
+    }
+  }, [refreshTrigger]);
+
   const categoriasUnicas = useMemo(() => {
-    const cats = backups.map((b) => b.category || "Geral");
+    const cats = backups.map((b) => b.nicho || b.category || "Sem categoria");
     return ["todas", ...new Set(cats)];
   }, [backups]);
 
   useEffect(() => {
     setPagina(1);
-  }, [busca, filtroAlerta, filtroGrupo, filtroCategoria, ordenacao]);
+  }, [busca, filtroAlerta, filtroGrupo, filtroCategoria, filtroStatusApi, filtroVariantes, filtroPeriodo, filtroSinal, ordenacao]);
 
   const backupsFiltrados = useMemo(() => {
     let lista = [...backups];
@@ -93,7 +124,36 @@ export default function BackupListagemTab({ refreshTrigger, showToast, askConfir
     else if (filtroAlerta === "saudaveis") lista = lista.filter((b) => !b.alertas?.length);
     if (filtroGrupo === "vinculados") lista = lista.filter((b) => b.grupoId);
     else if (filtroGrupo === "livres") lista = lista.filter((b) => !b.grupoId);
-    if (filtroCategoria !== "todas") lista = lista.filter((b) => (b.category || "Geral") === filtroCategoria);
+    if (filtroCategoria !== "todas") lista = lista.filter((b) => (b.nicho || b.category || "Sem categoria") === filtroCategoria);
+    if (filtroStatusApi === "ok") lista = lista.filter((b) => b.status_api === "ok");
+    else if (filtroStatusApi === "fora") lista = lista.filter((b) => b.status_api === "produto_nao_encontrado");
+    if (filtroVariantes === "com_faixa") {
+      lista = lista.filter((b) => Number(b.precoMax || 0) > Number(b.precoMin || 0) + 0.01);
+    } else if (filtroVariantes === "sem_faixa") {
+      lista = lista.filter((b) => !(Number(b.precoMax || 0) > Number(b.precoMin || 0) + 0.01));
+    }
+    if (filtroPeriodo === "acabando") {
+      const agoraSegs = Math.floor(Date.now() / 1000);
+      lista = lista.filter((b) => {
+        if (!b.periodoFim) return false;
+        const dias = (b.periodoFim - agoraSegs) / 86400;
+        return dias >= 0 && dias < 7;
+      });
+    }
+    if (filtroSinal === "critico") {
+      lista = lista.filter((b) => {
+        const preco = Number(b.preco || 0);
+        const pct = Number(b.comissao_pct || 0);
+        const r = Number(b.rating || 0);
+        const foraApi = b.status_api === "produto_nao_encontrado";
+        const semCom = pct === 0 && b.status_api === "ok";
+        const comBaixa = preco > 0 && pct > 0 && (preco * pct) / 100 < 1;
+        const ratingRuim = r > 0 && r < 4.0;
+        const semVendas = Number(b.vendas_shopee || 0) === 0 && b.status_api === "ok";
+        const precoSubiu = (b.alertas || []).some((a) => a?.tipo === "preco_subiu");
+        return foraApi || semCom || comBaixa || ratingRuim || semVendas || precoSubiu;
+      });
+    }
 
     lista.sort((a, b) => {
       if (ordenacao === "recentes") return (b.cadastrado_em?.getTime?.() || 0) - (a.cadastrado_em?.getTime?.() || 0);
@@ -118,7 +178,21 @@ export default function BackupListagemTab({ refreshTrigger, showToast, askConfir
   }, [backupsFiltrados, pagina, itensPorPagina]);
 
   const filtrosAtivos = filtroAlerta !== "todos" || filtroGrupo !== "todos"
-    || filtroCategoria !== "todas" || ordenacao !== "recentes";
+    || filtroCategoria !== "todas" || filtroStatusApi !== "todos"
+    || filtroVariantes !== "todos" || filtroPeriodo !== "todos"
+    || filtroSinal !== "todos" || ordenacao !== "recentes";
+
+  const limparFiltros = () => {
+    setBusca("");
+    setFiltroAlerta("todos");
+    setFiltroGrupo("todos");
+    setFiltroCategoria("todas");
+    setFiltroStatusApi("todos");
+    setFiltroVariantes("todos");
+    setFiltroPeriodo("todos");
+    setFiltroSinal("todos");
+    setOrdenacao("recentes");
+  };
 
   const toggleSelecionarTudo = () => {
     const idsPagina = backupsPaginados.map((b) => b.itemId);
@@ -293,6 +367,46 @@ export default function BackupListagemTab({ refreshTrigger, showToast, askConfir
               <option value="esquecidos">Verificação mais antiga</option>
             </select>
           </div>
+          <div>
+            <label className="block text-[10px] text-slate-400 font-bold uppercase mb-1">Status API</label>
+            <select value={filtroStatusApi} onChange={(e) => setFiltroStatusApi(e.target.value)} className="w-full px-3 py-2 border border-slate-200 rounded-lg text-xs bg-white font-semibold">
+              <option value="todos">Todos</option>
+              <option value="ok">OK na API</option>
+              <option value="fora">Fora do afiliado</option>
+            </select>
+          </div>
+          <div>
+            <label className="block text-[10px] text-slate-400 font-bold uppercase mb-1">Variantes</label>
+            <select value={filtroVariantes} onChange={(e) => setFiltroVariantes(e.target.value)} className="w-full px-3 py-2 border border-slate-200 rounded-lg text-xs bg-white font-semibold">
+              <option value="todos">Todos</option>
+              <option value="com_faixa">Com faixa (priceMin ≠ priceMax)</option>
+              <option value="sem_faixa">Preço único</option>
+            </select>
+          </div>
+          <div>
+            <label className="block text-[10px] text-slate-400 font-bold uppercase mb-1">Período comissão</label>
+            <select value={filtroPeriodo} onChange={(e) => setFiltroPeriodo(e.target.value)} className="w-full px-3 py-2 border border-slate-200 rounded-lg text-xs bg-white font-semibold">
+              <option value="todos">Todos</option>
+              <option value="acabando">Termina em &lt; 7 dias</option>
+            </select>
+          </div>
+          <div>
+            <label className="block text-[10px] text-slate-400 font-bold uppercase mb-1">Sinais críticos</label>
+            <select value={filtroSinal} onChange={(e) => setFiltroSinal(e.target.value)} className="w-full px-3 py-2 border border-slate-200 rounded-lg text-xs bg-white font-semibold">
+              <option value="todos">Todos</option>
+              <option value="critico">Só com problema (fora, sem comissão, rating &lt; 4, sem vendas, preço subiu)</option>
+            </select>
+          </div>
+          <div className="sm:col-span-2 lg:col-span-4 flex justify-end">
+            <button
+              type="button"
+              onClick={limparFiltros}
+              disabled={!filtrosAtivos && !busca}
+              className="px-3 py-2 text-[11px] font-bold text-slate-600 border border-slate-200 rounded-lg hover:bg-white disabled:opacity-40"
+            >
+              Limpar filtros
+            </button>
+          </div>
         </div>
       )}
 
@@ -345,6 +459,8 @@ export default function BackupListagemTab({ refreshTrigger, showToast, askConfir
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
             {backupsPaginados.map((b) => {
               const comissaoR$ = (Number(b.preco || 0) * Number(b.comissao_pct || 0)) / 100;
+              const comissaoR$Max = (Number(b.precoMax || b.preco || 0) * Number(b.comissao_pct || 0)) / 100;
+              const temFaixa = temFaixaPreco(b.precoMin, b.precoMax);
               const periodoInfo = formatPeriodoComissao(b.periodoFim);
               const sel = itensSelecionados.includes(b.itemId);
               return (
@@ -377,11 +493,20 @@ export default function BackupListagemTab({ refreshTrigger, showToast, askConfir
                         <Store size={11} />
                         {b.loja}
                         <span>·</span>
-                        {b.category || "Geral"}
+                        {b.nicho || b.category || "Sem categoria"}
                       </div>
                       <div className="flex flex-wrap gap-2 text-[11px] mt-1.5 font-bold">
-                        <span className="bg-slate-50 px-1.5 py-0.5 rounded border border-slate-100">{fmt(b.preco)}</span>
-                        <span className="text-orange-600 bg-orange-50 px-1.5 py-0.5 rounded border border-orange-100">{b.comissao_pct}% ({fmt(comissaoR$)})</span>
+                        <span
+                          className="bg-slate-50 px-1.5 py-0.5 rounded border border-slate-100"
+                          title={temFaixa ? "Produto tem variantes — faixa de preço da Shopee" : undefined}
+                        >
+                          {fmtPrecoRange(b.preco, b.precoMin, b.precoMax)}
+                        </span>
+                        <span className="text-orange-600 bg-orange-50 px-1.5 py-0.5 rounded border border-orange-100">
+                          {Number(b.comissao_pct || 0).toFixed(1)}% ({temFaixa
+                            ? `${fmt(comissaoR$)} — ${fmt(comissaoR$Max)}`
+                            : fmt(comissaoR$)})
+                        </span>
                       </div>
                       <div className="text-[9px] text-slate-400 mt-1 font-semibold flex flex-wrap items-center gap-1">
                         <span>Último scan {formatTempoAtras(b.ultima_verificacao)}</span>

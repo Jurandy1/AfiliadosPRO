@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { AlertTriangle, ArrowRight, CheckCircle2, FolderOpen, Trash2, X } from "lucide-react";
-import { fmt } from "../../../../utils/formatters";
+import { fmt, fmtPrecoRange, temFaixaPreco } from "../../../../utils/formatters";
 
 function DeltaBadge({ mudou, label }) {
   if (!mudou) {
@@ -90,11 +90,18 @@ export default function BackupRefreshReportDialog({
               </div>
               <div className="mt-2 space-y-1 text-[11px]">
                 {r.precoMudou ? (
-                  <div className="flex items-center gap-1.5 text-slate-700">
+                  <div className="flex items-center gap-1.5 text-slate-700 flex-wrap">
                     <span className="text-slate-500 w-16 shrink-0">Preço</span>
-                    <span className="line-through text-slate-400">{fmt(r.precoAntes)}</span>
+                    <span className="line-through text-slate-400">
+                      {fmtPrecoRange(r.precoAntes, r.precoMinAntes, r.precoMaxAntes)}
+                    </span>
                     <ArrowRight size={11} className="text-slate-400" />
-                    <span className="font-bold text-orange-700">{fmt(r.precoDepois)}</span>
+                    <span className="font-bold text-orange-700">
+                      {fmtPrecoRange(r.precoDepois, r.precoMinDepois, r.precoMaxDepois)}
+                    </span>
+                    {temFaixaPreco(r.precoMinDepois, r.precoMaxDepois) ? (
+                      <span className="text-[9px] text-slate-400 font-semibold">(variantes)</span>
+                    ) : null}
                   </div>
                 ) : null}
                 {r.comissaoMudou ? (
@@ -166,7 +173,11 @@ export default function BackupRefreshReportDialog({
               <ul className="mt-2 space-y-1">
                 {okSemMudanca.map((r) => (
                   <li key={`ok-${r.itemId}`} className="text-[11px] text-slate-500 truncate">
-                    {r.nome} — {fmt(r.precoDepois || r.precoAntes)} · {Number(r.comissaoDepois || r.comissaoAntes || 0).toFixed(1)}%
+                    {r.nome} — {fmtPrecoRange(
+                      r.precoDepois || r.precoAntes,
+                      r.precoMinDepois ?? r.precoMinAntes,
+                      r.precoMaxDepois ?? r.precoMaxAntes,
+                    )} · {Number(r.comissaoDepois || r.comissaoAntes || 0).toFixed(1)}%
                   </li>
                 ))}
               </ul>

@@ -3,6 +3,20 @@ import { comissaoProjetadaPeriodo } from "../daily-feed/calc/financeiroMetrics.j
 export const fmt = (v) =>
   "R$ " + (v || 0).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
+// Ao salvar backup guardamos price/priceMin/priceMax da Shopee. Se o produto tem
+// variantes com preços diferentes, o "preco" é o da variante mais barata; sem
+// mostrar a faixa o painel parece divergente da página pública.
+export function fmtPrecoRange(preco, precoMin, precoMax) {
+  const min = Number(precoMin ?? preco ?? 0);
+  const max = Number(precoMax ?? preco ?? 0);
+  if (max > min + 0.01) return `${fmt(min)} — ${fmt(max)}`;
+  return fmt(preco != null ? preco : min);
+}
+
+export function temFaixaPreco(precoMin, precoMax) {
+  return Number(precoMax || 0) > Number(precoMin || 0) + 0.01;
+}
+
 export const fmtPct = (v) => Math.round((v || 0) * 100) + "%";
 
 export const fmtNum = (v) => (v || 0).toLocaleString("pt-BR");

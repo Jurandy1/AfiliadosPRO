@@ -20,6 +20,9 @@ export async function enriquecerGrupoComHistorico(grupo) {
 }
 
 export function categoriaProduto(produto) {
-  if (!produto) return "Geral";
-  return produto.category || produto.categoria || "Geral";
+  if (!produto) return "Sem categoria";
+  if (produto.nicho) return produto.nicho;
+  if (produto.categoria) return String(produto.categoria).split(">")[0].trim();
+  if (produto.category) return String(produto.category).split(">")[0].trim();
+  return "Sem categoria";
 }
