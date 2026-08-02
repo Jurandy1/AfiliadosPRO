@@ -1736,7 +1736,7 @@ export default function BackupPage() {
             Backup & Contingência Pro
           </h1>
           <p className="text-slate-400 text-xs mt-1.5 max-w-xl font-medium">
-            Proteja links, garimpo por histórico real e radar de recompra. Verificação automática diária às 6h (BRT).
+            Proteja links, garimpo por histórico real e radar de recompra. Preço e comissão atualizam automaticamente 3×/dia (6h, 14h e 22h BRT).
           </p>
         </div>
         <button

@@ -5553,13 +5553,16 @@ async function shopeeQueryProduct(itemId, shopId) {
 }
 
 function normalizeShopeeProduct(node) {
+  const precoMin = Number(node.priceMin || 0);
+  const precoMax = Number(node.priceMax || 0);
+  const preco = Number(node.price || precoMin || precoMax || 0);
   return {
     itemId: String(node.itemId || ""),
     shopId: String(node.shopId || ""),
     nome: String(node.productName || ""),
-    preco: Number(node.price || 0),
-    precoMin: Number(node.priceMin || 0),
-    precoMax: Number(node.priceMax || 0),
+    preco,
+    precoMin: precoMin || preco,
+    precoMax: precoMax || preco,
     comissao_pct: Number(node.commissionRate || 0) * 100,
     vendas_shopee: Number(node.sales || 0),
     imagem: String(node.imageUrl || ""),
@@ -5738,58 +5741,166 @@ function buildBackupAlertas(dadosAtuais, novoSnapshot) {
   return alertas;
 }
 
-async function refreshBackupByItemId(itemId) {
-  const backupRef = db.collection("backup_produtos").doc(`item_${itemId}`);
+async function loadBackupProdutoRow(itemId) {
+  const id = String(itemId || "").trim();
+  if (!id) return null;
+  const docId = `item_${id}`;
+
+  if (supabase) {
+    const { data, error } = await supabase
+      .from("backup_produtos")
+      .select("id, item_id, shop_id, nome, data_blob")
+      .eq("id", docId)
+      .maybeSingle();
+    if (error) {
+      console.warn("[backup-refresh] supabase load:", error.message);
+    } else if (data) {
+      const blob = data.data_blob && typeof data.data_blob === "object" ? data.data_blob : {};
+      return {
+        source: "supabase",
+        docId,
+        itemId: String(blob.itemId || data.item_id || id),
+        dados: {
+          ...blob,
+          itemId: String(blob.itemId || data.item_id || id),
+          shopId: String(blob.shopId || data.shop_id || ""),
+          nome: blob.nome || data.nome || "",
+        },
+      };
+    }
+  }
+
+  const backupRef = db.collection("backup_produtos").doc(docId);
   const backupSnap = await backupRef.get();
-  if (!backupSnap.exists) {
+  if (!backupSnap.exists) return null;
+  const dados = backupSnap.data() || {};
+  return {
+    source: "firestore",
+    docId,
+    itemId: String(dados.itemId || id),
+    dados: {
+      ...dados,
+      itemId: String(dados.itemId || id),
+      shopId: String(dados.shopId || ""),
+    },
+  };
+}
+
+async function persistBackupProdutoRefresh(itemId, dadosAtuais, patch) {
+  const id = String(itemId || "").trim();
+  const docId = `item_${id}`;
+  const agoraIso = new Date().toISOString();
+  const merged = {
+    ...dadosAtuais,
+    ...patch,
+    itemId: String(patch.itemId || dadosAtuais.itemId || id),
+    shopId: String(patch.shopId || dadosAtuais.shopId || "0"),
+    apelido: dadosAtuais.apelido || "",
+    marcadoPrincipal: !!dadosAtuais.marcadoPrincipal,
+    grupoId: dadosAtuais.grupoId || null,
+    cadastrado_em: dadosAtuais.cadastrado_em || agoraIso,
+    ultima_verificacao: agoraIso,
+  };
+
+  if (supabase) {
+    const { error } = await supabase.from("backup_produtos").upsert({
+      id: docId,
+      item_id: merged.itemId,
+      shop_id: merged.shopId,
+      nome: merged.apelido || merged.nome || "",
+      data_blob: merged,
+    }, { onConflict: "id" });
+    if (error) throw new Error(`supabase_backup_upsert: ${error.message}`);
+  }
+
+  try {
+    await db.collection("backup_produtos").doc(docId).set({
+      ...merged,
+      ultima_verificacao: FieldValue.serverTimestamp(),
+      cadastrado_em: dadosAtuais.cadastrado_em || FieldValue.serverTimestamp(),
+    }, { merge: true });
+  } catch (e) {
+    console.warn("[backup-refresh] firestore dual-write falhou:", e?.message || e);
+  }
+
+  return merged;
+}
+
+async function refreshBackupByItemId(itemId) {
+  const row = await loadBackupProdutoRow(itemId);
+  if (!row) {
     return { ok: false, error: "not_in_backup" };
   }
 
-  const dadosAtuais = backupSnap.data() || {};
+  const dadosAtuais = row.dados || {};
   const shopId = dadosAtuais.shopId;
   if (!shopId) {
     return { ok: false, error: "missing_shopId_in_backup" };
   }
 
-  const node = await shopeeQueryProduct(itemId, shopId);
+  const node = await shopeeQueryProduct(row.itemId || itemId, shopId);
   if (!node) {
-    await backupRef.set({
+    await persistBackupProdutoRefresh(row.itemId || itemId, dadosAtuais, {
       status_api: "produto_nao_encontrado",
-      ultima_verificacao: FieldValue.serverTimestamp(),
-    }, { merge: true });
+    });
     return { ok: true, status: "produto_nao_encontrado" };
   }
 
   const novoSnapshot = normalizeShopeeProduct(node);
   const alertas = buildBackupAlertas(dadosAtuais, novoSnapshot);
 
-  await backupRef.set({
+  await persistBackupProdutoRefresh(row.itemId || itemId, dadosAtuais, {
     ...novoSnapshot,
-    apelido: dadosAtuais.apelido || "",
-    marcadoPrincipal: !!dadosAtuais.marcadoPrincipal,
-    grupoId: dadosAtuais.grupoId || null,
-    cadastrado_em: dadosAtuais.cadastrado_em || FieldValue.serverTimestamp(),
     status_api: "ok",
     alertas,
-    ultima_verificacao: FieldValue.serverTimestamp(),
-  }, { merge: true });
+  });
 
   return { ok: true, produto: novoSnapshot, alertas };
 }
 
-async function runBackupRefreshBatch({ maxItems = 40, maxAgeHours = 20 } = {}) {
-  const snap = await db.collection("backup_produtos").get();
+function parseBackupUltimaVerificacaoMs(value) {
+  if (!value) return 0;
+  if (typeof value?.toDate === "function") {
+    const d = value.toDate();
+    return d instanceof Date && !Number.isNaN(d.getTime()) ? d.getTime() : 0;
+  }
+  const t = Date.parse(String(value));
+  return Number.isFinite(t) ? t : 0;
+}
+
+async function runBackupRefreshBatch({ maxItems = 16, maxAgeHours = 20 } = {}) {
   const cutoff = Date.now() - maxAgeHours * 3600 * 1000;
   const candidatos = [];
+  let totalCadastrados = 0;
 
-  snap.forEach((docSnap) => {
-    const d = docSnap.data() || {};
-    const itemId = String(d.itemId || docSnap.id.replace(/^item_/, ""));
-    if (!itemId || !d.shopId) return;
-    const uv = d.ultima_verificacao?.toDate?.()?.getTime() || 0;
-    if (uv >= cutoff) return;
-    candidatos.push({ itemId, uv });
-  });
+  if (supabase) {
+    const { data: rows, error } = await supabase
+      .from("backup_produtos")
+      .select("id, item_id, shop_id, data_blob");
+    if (error) throw new Error(`supabase_backup_list: ${error.message}`);
+    const list = Array.isArray(rows) ? rows : [];
+    totalCadastrados = list.length;
+    for (const row of list) {
+      const blob = row.data_blob && typeof row.data_blob === "object" ? row.data_blob : {};
+      const itemId = String(blob.itemId || row.item_id || String(row.id || "").replace(/^item_/, ""));
+      const shopId = String(blob.shopId || row.shop_id || "");
+      if (!itemId || !shopId) continue;
+      const uv = parseBackupUltimaVerificacaoMs(blob.ultima_verificacao);
+      if (uv >= cutoff) continue;
+      candidatos.push({ itemId, uv });
+    }
+  } else {
+    const snap = await db.collection("backup_produtos").get();
+    totalCadastrados = snap.size;
+    snap.forEach((docSnap) => {
+      const d = docSnap.data() || {};
+      const itemId = String(d.itemId || docSnap.id.replace(/^item_/, ""));
+      if (!itemId || !d.shopId) return;
+      const uv = parseBackupUltimaVerificacaoMs(d.ultima_verificacao);
+      if (uv >= cutoff) return;
+      candidatos.push({ itemId, uv });
+    });
+  }
 
   candidatos.sort((a, b) => a.uv - b.uv);
   const toProcess = candidatos.slice(0, maxItems);
@@ -5808,11 +5919,12 @@ async function runBackupRefreshBatch({ maxItems = 40, maxAgeHours = 20 } = {}) {
   }
 
   return {
-    totalCadastrados: snap.size,
+    totalCadastrados,
     candidatos: candidatos.length,
     attempted: toProcess.length,
     refreshed,
     errors,
+    source: supabase ? "supabase" : "firestore",
   };
 }
 
@@ -5869,7 +5981,8 @@ exports.shopeeBackupRefreshNow = onRequest(
 
 exports.shopeeBackupRefreshDaily = onSchedule(
   {
-    schedule: "0 6 * * *",
+    // 3×/dia: ~16 itens por rodada (limite API ~31s entre queries) → cobre mais backups
+    schedule: "0 6,14,22 * * *",
     timeZone: "America/Sao_Paulo",
     secrets: ["SHOPEE_APP_ID", "SHOPEE_SECRET"],
     timeoutSeconds: 540,
@@ -5877,7 +5990,7 @@ exports.shopeeBackupRefreshDaily = onSchedule(
   },
   async () => {
     try {
-      const result = await runBackupRefreshBatch({ maxItems: 40, maxAgeHours: 20 });
+      const result = await runBackupRefreshBatch({ maxItems: 16, maxAgeHours: 20 });
       console.log("[backup-refresh] daily:", JSON.stringify(result));
     } catch (e) {
       console.error("[backup-refresh] daily falhou:", e?.message || e);
@@ -5914,13 +6027,35 @@ exports.shopeeBackupRefreshGroupNow = onRequest(
     }
 
     try {
-      const grupoSnap = await db.collection("backup_grupos").doc(String(grupoId)).get();
-      if (!grupoSnap.exists) {
-        res.status(404).json({ error: "grupo_not_found" });
-        return;
+      let principalItemId = null;
+      let backupItemIds = [];
+
+      if (supabase) {
+        const { data: gRow, error: gErr } = await supabase
+          .from("backup_grupos")
+          .select("id, principal_item_id, data_blob")
+          .eq("id", String(grupoId))
+          .maybeSingle();
+        if (gErr) throw new Error(gErr.message);
+        if (!gRow) {
+          res.status(404).json({ error: "grupo_not_found" });
+          return;
+        }
+        const blob = gRow.data_blob && typeof gRow.data_blob === "object" ? gRow.data_blob : {};
+        principalItemId = gRow.principal_item_id || blob.principalItemId || null;
+        backupItemIds = Array.isArray(blob.backupItemIds) ? blob.backupItemIds : [];
+      } else {
+        const grupoSnap = await db.collection("backup_grupos").doc(String(grupoId)).get();
+        if (!grupoSnap.exists) {
+          res.status(404).json({ error: "grupo_not_found" });
+          return;
+        }
+        const g = grupoSnap.data() || {};
+        principalItemId = g.principalItemId || null;
+        backupItemIds = Array.isArray(g.backupItemIds) ? g.backupItemIds : [];
       }
-      const g = grupoSnap.data() || {};
-      const ids = [g.principalItemId, ...(g.backupItemIds || [])].filter(Boolean).map(String);
+
+      const ids = [principalItemId, ...backupItemIds].filter(Boolean).map(String);
       const results = [];
       for (const itemId of ids) {
         try {
