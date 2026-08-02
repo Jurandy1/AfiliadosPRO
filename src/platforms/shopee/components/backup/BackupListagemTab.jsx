@@ -8,6 +8,7 @@ import {
   atualizarBackupsEmLote,
   buildRefreshDiff,
   editarBackupMeta,
+  enriquecerDiffsComGrupo,
   listarBackups,
   removerBackup,
 } from "../../repositories/backupRepository";
@@ -35,7 +36,7 @@ function formatPeriodoComissao(periodoFim) {
   return { texto: `Válido por ${dias} dias`, critico: false };
 }
 
-export default function BackupListagemTab({ refreshTrigger, showToast, askConfirm, onChanged }) {
+export default function BackupListagemTab({ refreshTrigger, showToast, askConfirm, onChanged, onIrAoGrupo }) {
   const [backups, setBackups] = useState([]);
   const [loading, setLoading] = useState(true);
   const [busca, setBusca] = useState("");
@@ -133,7 +134,7 @@ export default function BackupListagemTab({ refreshTrigger, showToast, askConfir
     try {
       const antes = backups.find((b) => String(b.itemId) === String(itemId)) || null;
       const res = await atualizarBackup(itemId);
-      const diff = buildRefreshDiff(antes, res);
+      const diff = (await enriquecerDiffsComGrupo([buildRefreshDiff(antes, res)]))[0];
       await carregar({ force: true });
       setRelatorioRefresh([diff]);
       const msg = diff.mudou
@@ -154,9 +155,11 @@ export default function BackupListagemTab({ refreshTrigger, showToast, askConfir
     setVarrendoLote(true);
     try {
       const byId = Object.fromEntries(backups.map((b) => [String(b.itemId), b]));
-      const results = await atualizarBackupsEmLote(itemIds, {
-        getAntes: (id) => byId[String(id)] || null,
-      });
+      const results = await enriquecerDiffsComGrupo(
+        await atualizarBackupsEmLote(itemIds, {
+          getAntes: (id) => byId[String(id)] || null,
+        }),
+      );
       await carregar({ force: true });
       setRelatorioRefresh(results);
       const ok = results.filter((r) => r.ok).length;
@@ -452,6 +455,22 @@ export default function BackupListagemTab({ refreshTrigger, showToast, askConfir
         open={Array.isArray(relatorioRefresh)}
         rows={relatorioRefresh || []}
         onClose={() => setRelatorioRefresh(null)}
+        onIrAoGrupo={(row) => {
+          setRelatorioRefresh(null);
+          onIrAoGrupo?.(row);
+        }}
+        onRemoverItem={async (row) => {
+          const ok = await askConfirm?.(
+            "Remover backup",
+            `Remover "${row.nome || row.itemId}" dos backups?`,
+          );
+          if (!ok) return false;
+          await removerBackup(row.itemId);
+          showToast?.("Backup removido.", "sucesso");
+          await carregar({ force: true });
+          onChanged?.();
+          return true;
+        }}
       />
     </div>
   );

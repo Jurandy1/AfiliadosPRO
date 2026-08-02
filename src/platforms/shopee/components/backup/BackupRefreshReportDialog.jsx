@@ -1,4 +1,5 @@
-import { AlertTriangle, ArrowRight, CheckCircle2, X } from "lucide-react";
+import { useEffect, useState } from "react";
+import { AlertTriangle, ArrowRight, CheckCircle2, FolderOpen, Trash2, X } from "lucide-react";
 import { fmt } from "../../../../utils/formatters";
 
 function DeltaBadge({ mudou, label }) {
@@ -12,13 +13,39 @@ function DeltaBadge({ mudou, label }) {
   );
 }
 
-export default function BackupRefreshReportDialog({ open, rows = [], onClose }) {
+export default function BackupRefreshReportDialog({
+  open,
+  rows = [],
+  onClose,
+  onRemoverItem,
+  onIrAoGrupo,
+}) {
+  const [busyId, setBusyId] = useState(null);
+  const [hiddenIds, setHiddenIds] = useState(() => new Set());
+
+  useEffect(() => {
+    if (open) setHiddenIds(new Set());
+  }, [open, rows]);
+
   if (!open) return null;
 
-  const lista = Array.isArray(rows) ? rows : [];
+  const lista = (Array.isArray(rows) ? rows : []).filter((r) => !hiddenIds.has(String(r.itemId)));
   const mudaram = lista.filter((r) => r.mudou);
   const okSemMudanca = lista.filter((r) => r.ok && !r.mudou);
   const erros = lista.filter((r) => !r.ok);
+
+  const handleRemover = async (r) => {
+    if (!onRemoverItem || !r?.itemId) return;
+    setBusyId(String(r.itemId));
+    try {
+      const removed = await onRemoverItem(r);
+      if (removed !== false) {
+        setHiddenIds((prev) => new Set([...prev, String(r.itemId)]));
+      }
+    } finally {
+      setBusyId(null);
+    }
+  };
 
   return (
     <div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center p-3 sm:p-4 bg-black/40">
@@ -42,9 +69,13 @@ export default function BackupRefreshReportDialog({ open, rows = [], onClose }) 
 
         <div className="overflow-y-auto px-4 py-3 space-y-2">
           {mudaram.length === 0 && erros.length === 0 ? (
-            <div className="text-center py-8 text-slate-500 text-xs">
-              <CheckCircle2 size={28} className="mx-auto text-emerald-500 mb-2" />
-              Nenhum preço ou comissão mudou nesta rodada.
+            <div className="text-center py-6 text-slate-500 text-xs space-y-2">
+              <CheckCircle2 size={28} className="mx-auto text-emerald-500" />
+              <p className="font-semibold text-slate-700">Nenhum preço ou comissão mudou nesta rodada.</p>
+              <p className="text-[11px] text-slate-500 max-w-sm mx-auto leading-relaxed">
+                Isso é normal: a Shopee devolveu os mesmos valores que já estavam salvos
+                (cron 3×/dia + varreduras recentes). Só aparece mudança quando a API muda de fato.
+              </p>
             </div>
           ) : null}
 
@@ -90,12 +121,38 @@ export default function BackupRefreshReportDialog({ open, rows = [], onClose }) 
                 Fora da API / precisam de atenção ({erros.length})
               </p>
               <p className="text-[10px] text-rose-600/80 -mt-1">
-                Em geral saíram do afiliado ou o shopId mudou — troque o link ou remova do backup.
+                Em geral saíram do afiliado ou o shopId mudou — remova ou abra o grupo para trocar o link.
               </p>
               {erros.map((r) => (
                 <div key={`e-${r.itemId}`} className="border border-rose-200 bg-rose-50/50 rounded-xl p-3">
-                  <p className="text-xs font-bold text-rose-800 line-clamp-1">{r.nome || r.itemId}</p>
+                  <p className="text-xs font-bold text-rose-800 line-clamp-2">{r.nome || r.itemId}</p>
                   <p className="text-[11px] text-rose-600 mt-1">{r.error || "Falha na atualização"}</p>
+                  {r.grupoNome ? (
+                    <p className="text-[10px] text-slate-500 mt-1">Grupo: {r.grupoNome}</p>
+                  ) : null}
+                  <div className="mt-2.5 flex flex-wrap gap-2">
+                    {r.grupoId && onIrAoGrupo ? (
+                      <button
+                        type="button"
+                        onClick={() => onIrAoGrupo(r)}
+                        className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-white border border-slate-200 text-[11px] font-bold text-slate-700 hover:bg-slate-50"
+                      >
+                        <FolderOpen size={12} />
+                        Ir ao grupo
+                      </button>
+                    ) : null}
+                    {onRemoverItem ? (
+                      <button
+                        type="button"
+                        disabled={busyId === String(r.itemId)}
+                        onClick={() => handleRemover(r)}
+                        className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-rose-600 text-white text-[11px] font-bold hover:bg-rose-700 disabled:opacity-50"
+                      >
+                        <Trash2 size={12} />
+                        {busyId === String(r.itemId) ? "Removendo…" : "Remover"}
+                      </button>
+                    ) : null}
+                  </div>
                 </div>
               ))}
             </div>

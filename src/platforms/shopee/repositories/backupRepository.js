@@ -136,11 +136,49 @@ export function buildRefreshDiff(antes, apiRes = {}) {
     alertas: alertasRelevantes,
     mudou: !naoEncontrado && (precoMudou || comissaoMudou || alertasRelevantes.length > 0),
     error: apiRes?.error || (naoEncontrado ? "Produto não encontrado na API" : (!ok ? "Falha na atualização" : null)),
+    grupoId: antes?.grupoId || null,
+    grupoNome: antes?.grupoNome || null,
   };
 }
 
+/** Enriquece diffs com nome do grupo (para ações no relatório). */
+export async function enriquecerDiffsComGrupo(rows) {
+  const lista = Array.isArray(rows) ? rows : [];
+  if (!lista.length) return lista;
+  const grupos = await listarGrupos();
+  const nomeById = Object.fromEntries(grupos.map((g) => [String(g.docId), g.nome || "Grupo"]));
+  return lista.map((r) => ({
+    ...r,
+    grupoNome: r.grupoNome || (r.grupoId ? nomeById[String(r.grupoId)] || null : null),
+  }));
+}
+
 export async function removerBackup(itemId) {
-  await supabase.from("backup_produtos").delete().eq("id", `item_${itemId}`);
+  const id = String(itemId || "").trim();
+  if (!id) return;
+  const docId = `item_${id}`;
+  const { data: pData } = await supabase.from("backup_produtos").select("data_blob").eq("id", docId).maybeSingle();
+  const grupoId = pData?.data_blob?.grupoId || null;
+  if (grupoId) {
+    const { data: gData } = await supabase.from("backup_grupos").select("data_blob").eq("id", grupoId).maybeSingle();
+    if (gData?.data_blob) {
+      const grupo = { ...gData.data_blob };
+      const isPrincipal = String(grupo.principalItemId || "") === id;
+      let backups = (grupo.backupItemIds || []).map(String).filter((x) => x !== id);
+      if (isPrincipal) {
+        const next = backups[0] || null;
+        grupo.principalItemId = next;
+        if (next) backups = backups.filter((x) => x !== String(next));
+      }
+      grupo.backupItemIds = backups;
+      grupo.atualizado_em = new Date().toISOString();
+      await supabase.from("backup_grupos").update({
+        principal_item_id: grupo.principalItemId || null,
+        data_blob: grupo,
+      }).eq("id", grupoId);
+    }
+  }
+  await supabase.from("backup_produtos").delete().eq("id", docId);
   invalidarCacheBackups();
 }
 

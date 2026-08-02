@@ -32,7 +32,9 @@ import {
   listarBackups,
   atualizarBackupsEmLote,
   buildRefreshDiff,
+  enriquecerDiffsComGrupo,
   editarBackupMeta,
+  removerBackup,
   buscarSimilaresDaLoja,
   buscarSimilaresShopApi,
   getHistoricoProduto,
@@ -524,6 +526,18 @@ function AbaGrupos({ refreshTrigger, onChange, showToast, askConfirm }) {
     carregar();
   }, [refreshTrigger]);
 
+  useEffect(() => {
+    try {
+      const expandId = sessionStorage.getItem(BACKUP_EXPAND_GRUPO_KEY);
+      if (expandId) {
+        sessionStorage.removeItem(BACKUP_EXPAND_GRUPO_KEY);
+        setGrupoExpandido(expandId);
+      }
+    } catch {
+      /* ignore */
+    }
+  }, [refreshTrigger, grupos.length]);
+
   const categoriasDeGrupos = useMemo(() => {
     const set = new Set();
     grupos.forEach((g) => {
@@ -658,16 +672,24 @@ function AbaGrupos({ refreshTrigger, onChange, showToast, askConfirm }) {
             try {
               const produtos = grupo.produtos || {};
               const res = await atualizarGrupoBackup(grupo.docId);
-              const rows = (Array.isArray(res?.results) ? res.results : []).map((r) => {
-                const antes = produtos[String(r.itemId)] || null;
-                return buildRefreshDiff(antes, {
-                  success: r.success ?? r.ok,
-                  status: r.status,
-                  produto: r.produto,
-                  alertas: r.alertas,
-                  error: r.error,
-                });
-              });
+              const rows = await enriquecerDiffsComGrupo(
+                (Array.isArray(res?.results) ? res.results : []).map((r) => {
+                  const base = produtos[String(r.itemId)] || {};
+                  const antes = {
+                    ...base,
+                    itemId: r.itemId,
+                    grupoId: grupo.docId,
+                    grupoNome: grupo.nome,
+                  };
+                  return buildRefreshDiff(antes, {
+                    success: r.success ?? r.ok,
+                    status: r.status,
+                    produto: r.produto,
+                    alertas: r.alertas,
+                    error: r.error,
+                  });
+                }),
+              );
               if (rows.length) setRelatorioRefresh(rows);
               const mudaram = rows.filter((r) => r.mudou).length;
               showToast?.(
@@ -724,6 +746,22 @@ function AbaGrupos({ refreshTrigger, onChange, showToast, askConfirm }) {
         open={Array.isArray(relatorioRefresh)}
         rows={relatorioRefresh || []}
         onClose={() => setRelatorioRefresh(null)}
+        onIrAoGrupo={(row) => {
+          setRelatorioRefresh(null);
+          if (row?.grupoId) setGrupoExpandido(String(row.grupoId));
+        }}
+        onRemoverItem={async (row) => {
+          const ok = await askConfirm?.(
+            "Remover backup",
+            `Remover "${row.nome || row.itemId}" dos backups?`,
+          );
+          if (!ok) return false;
+          await removerBackup(row.itemId);
+          showToast?.("Backup removido.", "sucesso");
+          await carregar();
+          if (onChange) onChange();
+          return true;
+        }}
       />
     </div>
   );
@@ -1661,6 +1699,7 @@ function CardGrupo({ grupo, expandido, criterio, onCriterioChange, onToggleExpan
 }
 
 export const BACKUP_INITIAL_TAB_KEY = "backup_initial_tab";
+export const BACKUP_EXPAND_GRUPO_KEY = "backup_expand_grupo";
 
 const BACKUP_TABS = ["grupos", "cadastrar", "listagem", "similar", "garimpo", "recompra"];
 
@@ -1675,6 +1714,16 @@ function getInitialBackupTab() {
     /* ignore */
   }
   return "grupos";
+}
+
+function irAoGrupoBackup(grupoId) {
+  if (!grupoId) return;
+  try {
+    sessionStorage.setItem(BACKUP_INITIAL_TAB_KEY, "grupos");
+    sessionStorage.setItem(BACKUP_EXPAND_GRUPO_KEY, String(grupoId));
+  } catch {
+    /* ignore */
+  }
 }
 
 export default function BackupPage() {
@@ -1726,9 +1775,11 @@ export default function BackupPage() {
     setVarrendoTudo(true);
     try {
       const byId = Object.fromEntries(lista.map((b) => [String(b.itemId), b]));
-      const results = await atualizarBackupsEmLote(lista.map((b) => b.itemId), {
-        getAntes: (id) => byId[String(id)] || null,
-      });
+      const results = await enriquecerDiffsComGrupo(
+        await atualizarBackupsEmLote(lista.map((b) => b.itemId), {
+          getAntes: (id) => byId[String(id)] || null,
+        }),
+      );
       setRelatorioRefresh(results);
       const sucesso = results.filter((r) => r.ok).length;
       const mudaram = results.filter((r) => r.mudou).length;
@@ -1762,6 +1813,25 @@ export default function BackupPage() {
         open={Array.isArray(relatorioRefresh)}
         rows={relatorioRefresh || []}
         onClose={() => setRelatorioRefresh(null)}
+        onIrAoGrupo={(row) => {
+          setRelatorioRefresh(null);
+          if (row?.grupoId) {
+            irAoGrupoBackup(row.grupoId);
+            setAba("grupos");
+            setRefreshTrigger((x) => x + 1);
+          }
+        }}
+        onRemoverItem={async (row) => {
+          const ok = await askConfirm(
+            "Remover backup",
+            `Remover "${row.nome || row.itemId}" dos backups?`,
+          );
+          if (!ok) return false;
+          await removerBackup(row.itemId);
+          showToast("Backup removido.", "sucesso");
+          handleCadastrado();
+          return true;
+        }}
       />
 
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 bg-gradient-to-r from-slate-900 to-slate-800 text-white p-4 sm:p-6 rounded-2xl sm:rounded-3xl shadow-lg relative overflow-hidden">
@@ -1818,6 +1888,15 @@ export default function BackupPage() {
             showToast={showToast}
             askConfirm={askConfirm}
             onChanged={handleCadastrado}
+            onIrAoGrupo={(row) => {
+              if (row?.grupoId) {
+                irAoGrupoBackup(row.grupoId);
+                setAba("grupos");
+                setRefreshTrigger((x) => x + 1);
+              } else {
+                showToast("Este item não está em nenhum grupo.", "aviso");
+              }
+            }}
           />
         </Suspense>
       )}
