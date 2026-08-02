@@ -48,13 +48,26 @@ const {
 
 const META_API_VERSION = process.env.META_API_VERSION || "v19.0";
 const META_ACCESS_TOKEN = process.env.META_ACCESS_TOKEN || "";
-const META_AD_ACCOUNT_IDS = (process.env.META_AD_ACCOUNT_IDS || "")
-  .split(",")
-  .flatMap((part) => {
-    const m = String(part || "").match(/\d{5,}/g);
-    return m && m[0] ? [m[0]] : [];
-  })
-  .filter(Boolean);
+/** Normaliza IDs; corrige o caso de ID colado 2× ao setar o secret. */
+function normalizeMetaAdAccountIds(raw) {
+  return String(raw || "")
+    .split(/[,\s]+/)
+    .flatMap((part) => {
+      const digits = String(part || "").replace(/\D/g, "");
+      if (digits.length < 5) return [];
+      const half = digits.length / 2;
+      if (
+        Number.isInteger(half)
+        && half >= 8
+        && digits.slice(0, half) === digits.slice(half)
+      ) {
+        return [digits.slice(0, half)];
+      }
+      return [digits];
+    })
+    .filter(Boolean);
+}
+const META_AD_ACCOUNT_IDS = normalizeMetaAdAccountIds(process.env.META_AD_ACCOUNT_IDS);
 
 function actId(id) {
   return String(id || "").startsWith("act_") ? String(id || "") : `act_${id}`;

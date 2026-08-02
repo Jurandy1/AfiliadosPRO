@@ -413,7 +413,7 @@ function resolveMetaDailyUrl() {
   if (/shopeebackfillnow/i.test(backfill)) {
     return backfill.replace(/shopeebackfillnow/i, "metabackfilldaily");
   }
-  return "https://metabackfilldaily-ncjpjjcdya-rj.a.run.app";
+  return "https://metabackfilldaily-76jmcgbjqa-rj.a.run.app";
 }
 
 /**
