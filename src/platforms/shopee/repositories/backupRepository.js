@@ -149,7 +149,8 @@ export async function editarBackupMeta(itemId, updates) {
 }
 
 export async function getHistoricoProduto(itemId) {
-  const { data: d } = await supabase.from("produtos").select("*").eq("id_item", String(itemId)).limit(1).single();
+  // maybeSingle: item sem venda não existe em `produtos` — .single() gerava HTTP 406 no console
+  const { data: d } = await supabase.from("produtos").select("*").eq("id_item", String(itemId)).limit(1).maybeSingle();
   if (!d) return { ja_vendeu: false };
   return {
     ja_vendeu: true,

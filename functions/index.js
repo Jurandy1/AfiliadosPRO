@@ -6060,9 +6060,25 @@ exports.shopeeBackupRefreshGroupNow = onRequest(
       for (const itemId of ids) {
         try {
           const r = await refreshBackupByItemId(itemId);
-          results.push({ itemId, ok: r.ok, status: r.status || "ok" });
+          results.push({
+            itemId,
+            ok: r.ok,
+            success: Boolean(r.ok) && r.status !== "produto_nao_encontrado",
+            status: r.status || (r.ok ? "ok" : "erro"),
+            produto: r.produto || null,
+            alertas: r.alertas || [],
+            error: r.error || null,
+          });
         } catch (err) {
-          results.push({ itemId, ok: false, error: err?.message || String(err) });
+          results.push({
+            itemId,
+            ok: false,
+            success: false,
+            status: "erro",
+            produto: null,
+            alertas: [],
+            error: err?.message || String(err),
+          });
         }
         await new Promise((r) => setTimeout(r, SHOPEE_NEW_QUERY_DELAY_MS));
       }

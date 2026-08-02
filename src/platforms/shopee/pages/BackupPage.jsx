@@ -31,6 +31,7 @@ import {
   salvarBackup,
   listarBackups,
   atualizarBackupsEmLote,
+  buildRefreshDiff,
   editarBackupMeta,
   buscarSimilaresDaLoja,
   buscarSimilaresShopApi,
@@ -501,6 +502,7 @@ function AbaGrupos({ refreshTrigger, onChange, showToast, askConfirm }) {
   const [refreshingGrupoId, setRefreshingGrupoId] = useState(null);
   const [buscaGrupo, setBuscaGrupo] = useState("");
   const [filtroCategoriaGrupo, setFiltroCategoriaGrupo] = useState("todas");
+  const [relatorioRefresh, setRelatorioRefresh] = useState(null);
 
   const carregar = async () => {
     setLoading(true);
@@ -654,11 +656,30 @@ function AbaGrupos({ refreshTrigger, onChange, showToast, askConfirm }) {
           onRefreshGrupo={async () => {
             setRefreshingGrupoId(grupo.docId);
             try {
-              await atualizarGrupoBackup(grupo.docId);
+              const produtos = grupo.produtos || {};
+              const res = await atualizarGrupoBackup(grupo.docId);
+              const rows = (Array.isArray(res?.results) ? res.results : []).map((r) => {
+                const antes = produtos[String(r.itemId)] || null;
+                return buildRefreshDiff(antes, {
+                  success: r.success ?? r.ok,
+                  status: r.status,
+                  produto: r.produto,
+                  alertas: r.alertas,
+                  error: r.error,
+                });
+              });
+              if (rows.length) setRelatorioRefresh(rows);
+              const mudaram = rows.filter((r) => r.mudou).length;
+              showToast?.(
+                mudaram > 0
+                  ? `Grupo atualizado — ${mudaram} mudaram. Veja o relatório.`
+                  : "Grupo atualizado — sem mudança de preço/comissão.",
+                mudaram > 0 ? "sucesso" : "info",
+              );
               await carregar();
               if (onChange) onChange();
             } catch (err) {
-              alert(err?.message || String(err));
+              showToast?.(err?.message || String(err), "erro");
             } finally {
               setRefreshingGrupoId(null);
             }
@@ -699,6 +720,11 @@ function AbaGrupos({ refreshTrigger, onChange, showToast, askConfirm }) {
           }}
         />
       )}
+      <BackupRefreshReportDialog
+        open={Array.isArray(relatorioRefresh)}
+        rows={relatorioRefresh || []}
+        onClose={() => setRelatorioRefresh(null)}
+      />
     </div>
   );
 }

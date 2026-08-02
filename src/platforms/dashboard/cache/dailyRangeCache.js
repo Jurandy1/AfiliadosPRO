@@ -111,14 +111,7 @@ async function fetchByDataField(collectionName, startDate, endDate) {
 
   // O código legado espera objetos que possivelmente têm 'id', e no Firebase o id era o documentId (ou a própria data).
   // No Supabase, se não vier um 'id', adicionamos um campo 'id' pra não quebrar a lógica.
-  const rows = allData.map((row) => ({ id: row.data || row.id, ...row }));
-
-  // [DEBUG TRACE]
-  if (collectionName === "subid_daily") {
-     const flare07 = rows.filter(r => r.data === "2026-06-20" && r.subid === "flare07");
-     console.log(`[TRACE A] fetchByDataField retornou ${rows.length} linhas. Flare07 dia 20:`, flare07);
-  }
-  return rows;
+  return allData.map((row) => ({ id: row.data || row.id, ...row }));
 }
 
 /**
