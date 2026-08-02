@@ -100,6 +100,38 @@ export async function atualizarBackup(itemId) {
   } finally { clearTimeout(timeoutId); }
 }
 
+/** Compara snapshot local com resposta da API de refresh. */
+export function buildRefreshDiff(antes, apiRes = {}) {
+  const novo = apiRes?.produto || {};
+  const itemId = String(antes?.itemId || novo.itemId || "");
+  const precoAntes = Number(antes?.preco || 0);
+  const precoDepois = Number(novo.preco ?? precoAntes);
+  const comissaoAntes = Number(antes?.comissao_pct || 0);
+  const comissaoDepois = Number(novo.comissao_pct ?? comissaoAntes);
+  const precoMudou = Number.isFinite(precoAntes) && Number.isFinite(precoDepois)
+    && Math.abs(precoAntes - precoDepois) > 0.009;
+  const comissaoMudou = Number.isFinite(comissaoAntes) && Number.isFinite(comissaoDepois)
+    && Math.abs(comissaoAntes - comissaoDepois) > 0.049;
+  const alertas = Array.isArray(apiRes?.alertas) ? apiRes.alertas : [];
+  const naoEncontrado = apiRes?.status === "produto_nao_encontrado";
+  const ok = Boolean(apiRes?.success) && !naoEncontrado;
+  return {
+    itemId,
+    nome: antes?.apelido || antes?.nome || novo.nome || itemId,
+    ok,
+    status: apiRes?.status || (ok ? "ok" : "erro"),
+    precoAntes,
+    precoDepois: naoEncontrado ? precoAntes : precoDepois,
+    precoMudou: !naoEncontrado && precoMudou,
+    comissaoAntes,
+    comissaoDepois: naoEncontrado ? comissaoAntes : comissaoDepois,
+    comissaoMudou: !naoEncontrado && comissaoMudou,
+    alertas,
+    mudou: !naoEncontrado && (precoMudou || comissaoMudou || alertas.length > 0),
+    error: apiRes?.error || (naoEncontrado ? "Produto não encontrado na API" : (!ok ? "Falha na atualização" : null)),
+  };
+}
+
 export async function removerBackup(itemId) {
   await supabase.from("backup_produtos").delete().eq("id", `item_${itemId}`);
   invalidarCacheBackups();
@@ -163,16 +195,33 @@ export async function atualizarGrupoBackup(grupoId) {
   return { status: "not_configured" };
 }
 
-export async function atualizarBackupsEmLote(itemIds, { delayMs = 1500, onItemDone } = {}) {
-  const resultados = { ok: [], erros: [] };
+export async function atualizarBackupsEmLote(itemIds, { delayMs = 1500, onItemDone, getAntes } = {}) {
+  const resultados = [];
   for (const id of itemIds) {
+    const antes = typeof getAntes === "function" ? getAntes(id) : null;
     try {
       const res = await atualizarBackup(id);
-      if (res.updated) resultados.ok.push(id);
-      else resultados.erros.push({ id, reason: "No update" });
-    } catch (error) { resultados.erros.push({ id, reason: error.message }); }
+      const diff = buildRefreshDiff(antes, res);
+      if (!diff.ok && !diff.error) diff.error = "Falha na atualização";
+      resultados.push(diff);
+    } catch (error) {
+      resultados.push({
+        itemId: String(id),
+        nome: antes?.apelido || antes?.nome || String(id),
+        ok: false,
+        mudou: false,
+        precoAntes: Number(antes?.preco || 0),
+        precoDepois: Number(antes?.preco || 0),
+        precoMudou: false,
+        comissaoAntes: Number(antes?.comissao_pct || 0),
+        comissaoDepois: Number(antes?.comissao_pct || 0),
+        comissaoMudou: false,
+        alertas: [],
+        error: error?.message || String(error),
+      });
+    }
     if (onItemDone) onItemDone(id);
-    if (delayMs > 0) await new Promise(r => setTimeout(r, delayMs));
+    if (delayMs > 0) await new Promise((r) => setTimeout(r, delayMs));
   }
   invalidarCacheBackups();
   return resultados;

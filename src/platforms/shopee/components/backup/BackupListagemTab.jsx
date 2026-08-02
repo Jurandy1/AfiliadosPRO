@@ -6,11 +6,13 @@ import {
 import {
   atualizarBackup,
   atualizarBackupsEmLote,
+  buildRefreshDiff,
   editarBackupMeta,
   listarBackups,
   removerBackup,
 } from "../../repositories/backupRepository";
 import { fmt, fmtNum } from "../../../../utils/formatters";
+import BackupRefreshReportDialog from "./BackupRefreshReportDialog";
 
 function formatTempoAtras(date) {
   if (!date) return "—";
@@ -47,6 +49,7 @@ export default function BackupListagemTab({ refreshTrigger, showToast, askConfir
   const [itensSelecionados, setItensSelecionados] = useState([]);
   const [atualizandoId, setAtualizandoId] = useState(null);
   const [varrendoLote, setVarrendoLote] = useState(false);
+  const [relatorioRefresh, setRelatorioRefresh] = useState(null);
 
   const carregar = async (opcoes = {}) => {
     setLoading(true);
@@ -128,9 +131,17 @@ export default function BackupListagemTab({ refreshTrigger, showToast, askConfir
   const handleRefresh = async (itemId) => {
     setAtualizandoId(itemId);
     try {
-      await atualizarBackup(itemId);
+      const antes = backups.find((b) => String(b.itemId) === String(itemId)) || null;
+      const res = await atualizarBackup(itemId);
+      const diff = buildRefreshDiff(antes, res);
       await carregar({ force: true });
-      showToast?.("Oferta atualizada via API Shopee.", "sucesso");
+      setRelatorioRefresh([diff]);
+      const msg = diff.mudou
+        ? "Atualizado — veja o que mudou no relatório."
+        : diff.ok
+          ? "Atualizado — preço e comissão iguais."
+          : (diff.error || "Falha na atualização");
+      showToast?.(msg, diff.ok ? (diff.mudou ? "sucesso" : "info") : "erro");
       onChanged?.();
     } catch (err) {
       showToast?.(err?.message || String(err), "erro");
@@ -142,10 +153,18 @@ export default function BackupListagemTab({ refreshTrigger, showToast, askConfir
   const handleMassScan = async (itemIds) => {
     setVarrendoLote(true);
     try {
-      const results = await atualizarBackupsEmLote(itemIds);
+      const byId = Object.fromEntries(backups.map((b) => [String(b.itemId), b]));
+      const results = await atualizarBackupsEmLote(itemIds, {
+        getAntes: (id) => byId[String(id)] || null,
+      });
       await carregar({ force: true });
+      setRelatorioRefresh(results);
       const ok = results.filter((r) => r.ok).length;
-      showToast?.(`Varredura: ${ok}/${itemIds.length} atualizados.`, ok === itemIds.length ? "sucesso" : "aviso");
+      const mudaram = results.filter((r) => r.mudou).length;
+      showToast?.(
+        `Varredura: ${ok}/${itemIds.length} ok · ${mudaram} mudaram.`,
+        mudaram > 0 ? "sucesso" : "aviso",
+      );
       onChanged?.();
     } catch (err) {
       showToast?.(err?.message || String(err), "erro");
@@ -428,6 +447,12 @@ export default function BackupListagemTab({ refreshTrigger, showToast, askConfir
           )}
         </>
       )}
+
+      <BackupRefreshReportDialog
+        open={Array.isArray(relatorioRefresh)}
+        rows={relatorioRefresh || []}
+        onClose={() => setRelatorioRefresh(null)}
+      />
     </div>
   );
 }

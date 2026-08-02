@@ -1,0 +1,122 @@
+import { AlertTriangle, ArrowRight, CheckCircle2, X } from "lucide-react";
+import { fmt } from "../../../../utils/formatters";
+
+function DeltaBadge({ mudou, label }) {
+  if (!mudou) {
+    return <span className="text-[10px] font-semibold text-slate-400">{label}</span>;
+  }
+  return (
+    <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-100 text-amber-800">
+      {label}
+    </span>
+  );
+}
+
+export default function BackupRefreshReportDialog({ open, rows = [], onClose }) {
+  if (!open) return null;
+
+  const lista = Array.isArray(rows) ? rows : [];
+  const mudaram = lista.filter((r) => r.mudou);
+  const okSemMudanca = lista.filter((r) => r.ok && !r.mudou);
+  const erros = lista.filter((r) => !r.ok);
+
+  return (
+    <div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center p-3 sm:p-4 bg-black/40">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[85vh] flex flex-col overflow-hidden">
+        <div className="px-4 py-3 border-b border-slate-100 flex items-center justify-between gap-2">
+          <div>
+            <h3 className="text-sm font-extrabold text-slate-900">Relatório da atualização</h3>
+            <p className="text-[11px] text-slate-500 mt-0.5">
+              {mudaram.length} mudaram · {okSemMudanca.length} iguais · {erros.length} erro(s)
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-500"
+            aria-label="Fechar"
+          >
+            <X size={16} />
+          </button>
+        </div>
+
+        <div className="overflow-y-auto px-4 py-3 space-y-2">
+          {mudaram.length === 0 && erros.length === 0 ? (
+            <div className="text-center py-8 text-slate-500 text-xs">
+              <CheckCircle2 size={28} className="mx-auto text-emerald-500 mb-2" />
+              Nenhum preço ou comissão mudou nesta rodada.
+            </div>
+          ) : null}
+
+          {mudaram.map((r) => (
+            <div key={`m-${r.itemId}`} className="border border-amber-200 bg-amber-50/40 rounded-xl p-3">
+              <div className="flex items-start justify-between gap-2">
+                <p className="text-xs font-bold text-slate-900 line-clamp-2">{r.nome}</p>
+                <div className="flex gap-1 shrink-0">
+                  {r.precoMudou ? <DeltaBadge mudou label="Preço" /> : null}
+                  {r.comissaoMudou ? <DeltaBadge mudou label="Comissão" /> : null}
+                </div>
+              </div>
+              <div className="mt-2 space-y-1 text-[11px]">
+                {r.precoMudou ? (
+                  <div className="flex items-center gap-1.5 text-slate-700">
+                    <span className="text-slate-500 w-16 shrink-0">Preço</span>
+                    <span className="line-through text-slate-400">{fmt(r.precoAntes)}</span>
+                    <ArrowRight size={11} className="text-slate-400" />
+                    <span className="font-bold text-orange-700">{fmt(r.precoDepois)}</span>
+                  </div>
+                ) : null}
+                {r.comissaoMudou ? (
+                  <div className="flex items-center gap-1.5 text-slate-700">
+                    <span className="text-slate-500 w-16 shrink-0">Comissão</span>
+                    <span className="line-through text-slate-400">{Number(r.comissaoAntes).toFixed(1)}%</span>
+                    <ArrowRight size={11} className="text-slate-400" />
+                    <span className="font-bold text-orange-700">{Number(r.comissaoDepois).toFixed(1)}%</span>
+                  </div>
+                ) : null}
+                {(r.alertas || []).slice(0, 2).map((a, i) => (
+                  <p key={i} className="text-amber-800 flex items-start gap-1 mt-1">
+                    <AlertTriangle size={11} className="mt-0.5 shrink-0" />
+                    {a.mensagem || a.tipo}
+                  </p>
+                ))}
+              </div>
+            </div>
+          ))}
+
+          {erros.map((r) => (
+            <div key={`e-${r.itemId}`} className="border border-rose-200 bg-rose-50/50 rounded-xl p-3">
+              <p className="text-xs font-bold text-rose-800 line-clamp-1">{r.nome || r.itemId}</p>
+              <p className="text-[11px] text-rose-600 mt-1">{r.error || "Falha na atualização"}</p>
+            </div>
+          ))}
+
+          {okSemMudanca.length > 0 ? (
+            <details className="mt-2">
+              <summary className="text-[11px] text-slate-500 cursor-pointer font-semibold">
+                Ver {okSemMudanca.length} sem mudança
+              </summary>
+              <ul className="mt-2 space-y-1">
+                {okSemMudanca.map((r) => (
+                  <li key={`ok-${r.itemId}`} className="text-[11px] text-slate-500 truncate">
+                    {r.nome} — {fmt(r.precoDepois || r.precoAntes)} · {Number(r.comissaoDepois || r.comissaoAntes || 0).toFixed(1)}%
+                  </li>
+                ))}
+              </ul>
+            </details>
+          ) : null}
+        </div>
+
+        <div className="px-4 py-3 border-t border-slate-100">
+          <button
+            type="button"
+            onClick={onClose}
+            className="w-full py-2.5 rounded-xl bg-slate-900 text-white text-xs font-bold hover:bg-slate-800"
+          >
+            Fechar relatório
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}

@@ -50,6 +50,7 @@ import {
 import { fmt, fmtNum } from "../../../utils/formatters";
 import BackupToast from "../components/backup/BackupToast";
 import BackupConfirmDialog from "../components/backup/BackupConfirmDialog";
+import BackupRefreshReportDialog from "../components/backup/BackupRefreshReportDialog";
 import LoadingSpinner from "../../../components/layout/LoadingSpinner";
 import SugestoesRoboGarimpo from "../components/backup/SugestoesRoboGarimpo";
 import BackupGarimpoConfigTab from "../components/backup/BackupGarimpoConfigTab";
@@ -1658,6 +1659,7 @@ export default function BackupPage() {
   const [gruposCount, setGruposCount] = useState(0);
   const [toast, setToast] = useState(null);
   const [varrendoTudo, setVarrendoTudo] = useState(false);
+  const [relatorioRefresh, setRelatorioRefresh] = useState(null);
   const [dialog, setDialog] = useState({
     isOpen: false, titulo: "", mensagem: "", onConfirm: () => {}, onCancel: () => {},
   });
@@ -1697,11 +1699,16 @@ export default function BackupPage() {
     if (!ok) return;
     setVarrendoTudo(true);
     try {
-      const results = await atualizarBackupsEmLote(lista.map((b) => b.itemId));
+      const byId = Object.fromEntries(lista.map((b) => [String(b.itemId), b]));
+      const results = await atualizarBackupsEmLote(lista.map((b) => b.itemId), {
+        getAntes: (id) => byId[String(id)] || null,
+      });
+      setRelatorioRefresh(results);
       const sucesso = results.filter((r) => r.ok).length;
+      const mudaram = results.filter((r) => r.mudou).length;
       showToast(
-        `Varredura concluída: ${sucesso}/${lista.length} atualizados.`,
-        sucesso === lista.length ? "sucesso" : "aviso",
+        `Varredura: ${sucesso}/${lista.length} ok · ${mudaram} mudaram.`,
+        mudaram > 0 ? "sucesso" : "aviso",
       );
       handleCadastrado();
     } catch (err) {
@@ -1725,6 +1732,11 @@ export default function BackupPage() {
     <div className="px-3 sm:px-4 py-4 max-w-6xl mx-auto space-y-4">
       <BackupConfirmDialog {...dialog} />
       {toast && <BackupToast {...toast} onClose={() => setToast(null)} />}
+      <BackupRefreshReportDialog
+        open={Array.isArray(relatorioRefresh)}
+        rows={relatorioRefresh || []}
+        onClose={() => setRelatorioRefresh(null)}
+      />
 
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 bg-gradient-to-r from-slate-900 to-slate-800 text-white p-4 sm:p-6 rounded-2xl sm:rounded-3xl shadow-lg relative overflow-hidden">
         <div className="absolute top-0 right-0 translate-x-12 -translate-y-8 opacity-5 pointer-events-none">
