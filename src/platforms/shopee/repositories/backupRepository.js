@@ -113,6 +113,13 @@ export function buildRefreshDiff(antes, apiRes = {}) {
   const comissaoMudou = Number.isFinite(comissaoAntes) && Number.isFinite(comissaoDepois)
     && Math.abs(comissaoAntes - comissaoDepois) > 0.049;
   const alertas = Array.isArray(apiRes?.alertas) ? apiRes.alertas : [];
+  const alertasRelevantes = alertas.filter((a) =>
+    a?.tipo === "comissao_zero"
+    || a?.tipo === "periodo_acaba"
+    || a?.tipo === "preco_subiu"
+    || a?.tipo === "comissao_caiu"
+    || a?.tipo === "comissao_subiu"
+  );
   const naoEncontrado = apiRes?.status === "produto_nao_encontrado";
   const ok = Boolean(apiRes?.success) && !naoEncontrado;
   return {
@@ -126,8 +133,8 @@ export function buildRefreshDiff(antes, apiRes = {}) {
     comissaoAntes,
     comissaoDepois: naoEncontrado ? comissaoAntes : comissaoDepois,
     comissaoMudou: !naoEncontrado && comissaoMudou,
-    alertas,
-    mudou: !naoEncontrado && (precoMudou || comissaoMudou || alertas.length > 0),
+    alertas: alertasRelevantes,
+    mudou: !naoEncontrado && (precoMudou || comissaoMudou || alertasRelevantes.length > 0),
     error: apiRes?.error || (naoEncontrado ? "Produto não encontrado na API" : (!ok ? "Falha na atualização" : null)),
   };
 }

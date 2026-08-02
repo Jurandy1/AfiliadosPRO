@@ -84,12 +84,22 @@ export default function BackupRefreshReportDialog({ open, rows = [], onClose }) 
             </div>
           ))}
 
-          {erros.map((r) => (
-            <div key={`e-${r.itemId}`} className="border border-rose-200 bg-rose-50/50 rounded-xl p-3">
-              <p className="text-xs font-bold text-rose-800 line-clamp-1">{r.nome || r.itemId}</p>
-              <p className="text-[11px] text-rose-600 mt-1">{r.error || "Falha na atualização"}</p>
+          {erros.length > 0 ? (
+            <div className="space-y-2">
+              <p className="text-[11px] font-bold text-rose-700">
+                Fora da API / precisam de atenção ({erros.length})
+              </p>
+              <p className="text-[10px] text-rose-600/80 -mt-1">
+                Em geral saíram do afiliado ou o shopId mudou — troque o link ou remova do backup.
+              </p>
+              {erros.map((r) => (
+                <div key={`e-${r.itemId}`} className="border border-rose-200 bg-rose-50/50 rounded-xl p-3">
+                  <p className="text-xs font-bold text-rose-800 line-clamp-1">{r.nome || r.itemId}</p>
+                  <p className="text-[11px] text-rose-600 mt-1">{r.error || "Falha na atualização"}</p>
+                </div>
+              ))}
             </div>
-          ))}
+          ) : null}
 
           {okSemMudanca.length > 0 ? (
             <details className="mt-2">

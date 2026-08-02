@@ -5730,13 +5730,8 @@ function buildBackupAlertas(dadosAtuais, novoSnapshot) {
     });
   }
 
-  if (Number(novoSnapshot.vendas_shopee || 0) === 0 && comissaoNova > 0) {
-    alertas.push({
-      tipo: "estoque_indisponivel",
-      nivel: "aviso",
-      mensagem: "Produto sem vendas registradas na Shopee — verifique disponibilidade.",
-    });
-  }
+  // Não alertar por vendas_shopee === 0: muitos itens novos/baixos têm 0 no campo da API
+  // sem estarem indisponíveis — isso poluía o relatório a cada refresh.
 
   return alertas;
 }
