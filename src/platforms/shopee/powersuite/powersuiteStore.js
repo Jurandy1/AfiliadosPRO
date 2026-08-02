@@ -21,8 +21,15 @@ export function readPowersuiteState() {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     const parsed = raw ? JSON.parse(raw) : {};
+    const fromEnv = defaultApiConfig();
+    const saved = parsed.apiConfig || {};
+    // Env (Vercel/.env) manda na URL/secret — evita URL antiga presa no localStorage
     return {
-      apiConfig: { ...defaultApiConfig(), ...(parsed.apiConfig || {}) },
+      apiConfig: {
+        ...saved,
+        affiliateGraphqlUrl: fromEnv.affiliateGraphqlUrl || saved.affiliateGraphqlUrl || "",
+        backfillSecret: fromEnv.backfillSecret || saved.backfillSecret || "",
+      },
       searchParams: { ...DEFAULT_SEARCH_PARAMS, ...(parsed.searchParams || {}) },
     };
   } catch {
